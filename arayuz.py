@@ -38,7 +38,7 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2933/2933991.png", width=60)
     st.header("⚙️ Veri Bağlantıları")
     dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", r"seminerveriler_son.xlsx")
-    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari_ilk.xlsx")
+    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari.xlsx")
     st.markdown("---")
     if st.button("🔄 Sistemi Sıfırla (Başa Dön)"):
         st.session_state.hesaplandi = False
