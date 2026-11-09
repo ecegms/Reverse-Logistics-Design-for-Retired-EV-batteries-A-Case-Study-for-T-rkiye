@@ -62,8 +62,17 @@ with st.sidebar:
         st.error("Girdi Dosyası: Bulunamadı ❌")
         
     try:
-        pd.read_excel(dosya_sonuc, nrows=1)
+        with open(dosya_sonuc, "rb") as f:
+            excel_bytes = f.read()
         st.success("Sonuç Dosyası: Bağlı ✅")
+        
+        # MODEL SONUÇLARI İNDİRME BUTONU EKLENDİ
+        st.download_button(
+            label="📥 Model Sonuçlarını İndir",
+            data=excel_bytes,
+            file_name="Model_Sonuclari.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
     except:
         st.warning("Sonuç Dosyası: Bekleniyor ⏳")
 
@@ -278,9 +287,7 @@ if st.session_state.model_calisti:
                 with gc1:
                     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
                     if not df_z.empty and 'Donem' in df_z.columns:
-                        # 1. yıldan mevcut yıla kadar olan verileri kümülatif filtreleme
                         df_z_kumulatif = df_z[df_z['Donem'] <= yil].groupby('Toplama(j)')['Miktar'].sum().reset_index()
-                        # İl adlarını eşleme
                         df_z_kumulatif['Il_Adi'] = df_z_kumulatif['Toplama(j)'].map(lambda idx: aday_toplama.iloc[int(idx)]['Il_Adi'] if int(idx) < len(aday_toplama) else f"Merkez {idx}")
                         
                         fig_p1 = px.bar(df_z_kumulatif, x='Il_Adi', y='Miktar', title=f"1. Yıl - {yil}. Yıl Kümülatif İl Bazlı Toplama Dağılımı", color_discrete_sequence=['#38bdf8'])
@@ -318,7 +325,6 @@ if st.session_state.model_calisti:
         w1_donem = df_w[df_w['Akis_Tipi'].str.startswith('W1')].groupby('Donem')['Miktar'].sum() if not df_w.empty else pd.Series()
         w23_donem = df_w[df_w['Akis_Tipi'].str.startswith('W2') | df_w['Akis_Tipi'].str.startswith('W3')].groupby('Donem')['Miktar'].sum() if not df_w.empty else pd.Series()
 
-        # 1. Toplama ➔ İşleme Çizgileri (Sürekli ve Kırmızı)
         for index, toplama in aday_toplama.iterrows():
             en_kisa = float('inf'); hedef_isleme = None
             for isleme in isleme_aday_illeri:
@@ -333,7 +339,6 @@ if st.session_state.model_calisti:
                     tooltip=folium.Tooltip(html+"</div>")
                 ).add_to(m_sonuc)
 
-        # 2. İşleme ➔ İkinci Ömür / Geri Dönüşüm Çizgileri (Kesikli ve Siyah)
         for i, isleme_il in enumerate(isleme_aday_illeri):
             hedef_il = minimax_adaylari[i]
             html = f"<div style='width:150px'><b>{isleme_il['Il_Adi']} ➔ 2.Ömür / Geri Dönüşüm</b><hr style='margin:2px;'>"
