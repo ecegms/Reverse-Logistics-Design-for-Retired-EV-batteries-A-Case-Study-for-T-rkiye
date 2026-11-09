@@ -134,8 +134,6 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
                 'Boylam': il_bilgisi['Boylam'] + 0.08
             })
             
-        minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
-            
         c1, c2 = st.columns([1, 1.8])
         with c1:
             st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
@@ -158,15 +156,13 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
         with c2:
             st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
             st.subheader("🗺️ Coğrafi Konum Dağılımı Haritası")
-            st.markdown("<p style='font-size:12px; color:#94a3b8;'>🔵 Mavi: Toplama Merkezleri | 🔴 Kırmızı: İşleme Merkezleri | 🟢 Yeşil: 2. Ömür / Bertaraf</p>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size:12px; color:#94a3b8;'>🔵 Mavi: Toplama | 🔴 Kırmızı: İşleme | 🟣 Mor: 2. Ömür | 🟢 Yeşil: Geri Dönüşüm</p>", unsafe_allow_html=True)
             
             m = folium.Map(location=[39.0, 35.0], zoom_start=6) 
             for idx, row in aday_toplama.iterrows():
                 folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m)
             for il in isleme_aday_illeri:
                 folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="red", icon="industry", prefix='fa'), tooltip=f"İşleme Merkezi: {il['Il_Adi']}").add_to(m)
-            for il in minimax_adaylari:
-                folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="green", icon="recycle", prefix='fa'), tooltip=f"2. Ömür / Geri Dönüşüm: {il['Il_Adi']}").add_to(m)
             
             st_folium(m, width=800, height=450)
             st.markdown("</div>", unsafe_allow_html=True)
@@ -211,8 +207,6 @@ if st.session_state.model_calisti:
                 'Enlem': il_bilgisi['Enlem'] - 0.08, 
                 'Boylam': il_bilgisi['Boylam'] + 0.08
             })
-            
-        minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
 
         df_w = pd.read_excel(dosya_sonuc, sheet_name='W_Tesis_Akislari')
         df_z = pd.read_excel(dosya_sonuc, sheet_name='Z_Sehir_Toplama')
@@ -272,15 +266,12 @@ if st.session_state.model_calisti:
                     if not df_stok_p.empty: st.dataframe(df_stok_p, use_container_width=True)
                     else: st.info(f"{yil}. Yıl için stok verisi bulunamadı.")
 
-                # Dönemsel Grafikler (Kümülatif Toplama Dağılımı eklendi)
                 st.markdown("---")
                 gc1, gc2 = st.columns(2)
                 with gc1:
                     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
                     if not df_z.empty and 'Donem' in df_z.columns:
-                        # 1. yıldan mevcut yıla kadar olan verileri kümülatif filtreleme
                         df_z_kumulatif = df_z[df_z['Donem'] <= yil].groupby('Toplama(j)')['Miktar'].sum().reset_index()
-                        # İl adlarını eşleme
                         df_z_kumulatif['Il_Adi'] = df_z_kumulatif['Toplama(j)'].map(lambda idx: aday_toplama.iloc[int(idx)]['Il_Adi'] if int(idx) < len(aday_toplama) else f"Merkez {idx}")
                         
                         fig_p1 = px.bar(df_z_kumulatif, x='Il_Adi', y='Miktar', title=f"1. Yıl - {yil}. Yıl Kümülatif İl Bazlı Toplama Dağılımı", color_discrete_sequence=['#38bdf8'])
@@ -304,28 +295,61 @@ if st.session_state.model_calisti:
         # --- GENEL HARİTA VE TÜMÜNÜ GÖSTEREN KOKPİT ---
         st.markdown("---")
         st.markdown("<h3 style='text-align: center;'>🗺️ Genel Lojistik Akış Ağı Haritası</h3>", unsafe_allow_html=True)
-        st.markdown("<p style='font-size:13px; color:#94a3b8; text-align:center;'>🔴 Sürekli Kırmızı Çizgiler: Toplama ➔ İşleme | ⚫ Kesikli Siyah Çizgiler: İşleme ➔ 2. Ömür / Geri Dönüşüm</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-size:13px; color:#94a3b8;'>🔴 Sürekli Kırmızı: Toplama ➔ İşleme | ⚫ Kesikli Siyah: İşleme ➔ 2. Ömür / Geri Dönüşüm</p>", unsafe_allow_html=True)
         
         m_sonuc = folium.Map(location=[39.0, 35.0], zoom_start=6) 
         
+        # 1. Toplama Merkezleri (Mavi)
         for idx, row in aday_toplama.iterrows():
             folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m_sonuc)
+            
+        # 2. İşleme Merkezleri (Kırmızı)
         for il in isleme_aday_illeri:
             folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="red", icon="industry", prefix='fa'), tooltip=f"İşleme Merkezi: {il['Il_Adi']}").add_to(m_sonuc)
-        for il in minimax_adaylari:
-            folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="green", icon="recycle", prefix='fa'), tooltip=f"2. Ömür / Geri Dönüşüm: {il['Il_Adi']}").add_to(m_sonuc)
+
+        # 3. Model Sonuçlarına Göre İkinci Ömür (Mor Pin + Yaprak) ve Geri Dönüşüm (Yeşil Pin + Geri Dönüşüm İkonu)
+        acilan_ikinci_omur = df_tesis[df_tesis['Tesis_Tipi'].str.contains('Ikinci Omur')]
+        acilan_geridonusum = df_tesis[df_tesis['Tesis_Tipi'].str.contains('Geri Donusum')]
+
+        # İkinci Ömür Tesisleri Konumlandırma (Örn: İşleme merkezlerinin sağ üstü)
+        for _, row in acilan_ikinci_omur.iterrows():
+            t_no = int(row['Tesis_No'])
+            if t_no < len(isleme_aday_illeri):
+                il_bilgi = isleme_aday_illeri[t_no]
+                lat = il_bilgi['Enlem'] + 0.12
+                lon = il_bilgi['Boylam'] + 0.12
+                il_adi = il_bilgi['Il_Adi']
+                folium.Marker(
+                    location=[lat, lon], 
+                    icon=folium.Icon(color="purple", icon="leaf", prefix='fa'), 
+                    tooltip=f"2. Ömür Tesisi (Yıl {row['Donem']}): {il_adi}"
+                ).add_to(m_sonuc)
+
+        # Geri Dönüşüm Tesisleri Konumlandırma (Örn: İşleme merkezlerinin sol üstü)
+        for _, row in acilan_geridonusum.iterrows():
+            t_no = int(row['Tesis_No'])
+            if t_no < len(isleme_aday_illeri):
+                il_bilgi = isleme_aday_illeri[t_no]
+                lat = il_bilgi['Enlem'] + 0.12
+                lon = il_bilgi['Boylam'] - 0.12
+                il_adi = il_bilgi['Il_Adi']
+                folium.Marker(
+                    location=[lat, lon], 
+                    icon=folium.Icon(color="green", icon="recycle", prefix='fa'), 
+                    tooltip=f"Geri Dönüşüm Tesisi (Yıl {row['Donem']}): {il_adi}"
+                ).add_to(m_sonuc)
 
         w1_donem = df_w[df_w['Akis_Tipi'].str.startswith('W1')].groupby('Donem')['Miktar'].sum() if not df_w.empty else pd.Series()
         w23_donem = df_w[df_w['Akis_Tipi'].str.startswith('W2') | df_w['Akis_Tipi'].str.startswith('W3')].groupby('Donem')['Miktar'].sum() if not df_w.empty else pd.Series()
 
-        # 1. Toplama ➔ İşleme Çizgileri (Sürekli ve Kırmızı)
+        # Toplama ➔ İşleme (Sürekli ve Kırmızı)
         for index, toplama in aday_toplama.iterrows():
             en_kisa = float('inf'); hedef_isleme = None
             for isleme in isleme_aday_illeri:
                 mesafe = distance.euclidean([toplama['Enlem'], toplama['Boylam']], [isleme['Enlem'], isleme['Boylam']])
                 if mesafe < en_kisa: en_kisa = mesafe; hedef_isleme = isleme
             if hedef_isleme:
-                html = f"<div style='width:150px'><b>{toplama['Il_Adi']} ➔ {hedef_isleme['Il_Adi']} (Batarya Akışı)</b><hr style='margin:2px;'>"
+                html = f"<div style='width:150px'><b>{toplama['Il_Adi']} ➔ {hedef_isleme['Il_Adi']}</b><hr style='margin:2px;'>"
                 for d, m_val in w1_donem.items(): html += f"Yıl {d}: {int(m_val/len(aday_toplama)):,} br<br>"
                 folium.PolyLine(
                     locations=[[toplama['Enlem'], toplama['Boylam']], [hedef_isleme['Enlem'], hedef_isleme['Boylam']]], 
@@ -333,13 +357,15 @@ if st.session_state.model_calisti:
                     tooltip=folium.Tooltip(html+"</div>")
                 ).add_to(m_sonuc)
 
-        # 2. İşleme ➔ İkinci Ömür / Geri Dönüşüm Çizgileri (Kesikli ve Siyah)
+        # İşleme ➔ 2. Ömür / Geri Dönüşüm (Kesikli ve Siyah)
         for i, isleme_il in enumerate(isleme_aday_illeri):
-            hedef_il = minimax_adaylari[i]
-            html = f"<div style='width:150px'><b>{isleme_il['Il_Adi']} ➔ 2.Ömür / Geri Dönüşüm</b><hr style='margin:2px;'>"
+            # En yakın 2. ömür veya geri dönüşüm tesis koordinatına bağlama
+            hedef_lat = isleme_il['Enlem'] + 0.12
+            hedef_lon = isleme_il['Boylam'] + 0.12
+            html = f"<div style='width:150px'><b>{isleme_il['Il_Adi']} ➔ Tesislerarası Akış</b><hr style='margin:2px;'>"
             for d, m_val in w23_donem.items(): html += f"Yıl {d}: {int(m_val/len(isleme_aday_illeri)):,} br<br>"
             folium.PolyLine(
-                locations=[[isleme_il['Enlem'], isleme_il['Boylam']], [hedef_il['Enlem'], hedef_il['Boylam']]], 
+                locations=[[isleme_il['Enlem'], isleme_il['Boylam']], [hedef_lat, hedef_lon]], 
                 color='#000000', weight=3, dash_array='8, 8', opacity=0.9, 
                 tooltip=folium.Tooltip(html+"</div>")
             ).add_to(m_sonuc)
