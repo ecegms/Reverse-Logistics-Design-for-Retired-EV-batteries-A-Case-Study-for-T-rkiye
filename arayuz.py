@@ -50,7 +50,6 @@ with st.sidebar:
     st.header("⚙️ Veri & Sistem Yönetimi")
     st.markdown("<p style='font-size:12px; color:#94a3b8;'>Model girdilerini ve optimizasyon çıktı dosyalarını buradan yönetin.</p>", unsafe_allow_html=True)
     
-    # 1. GÜNCELLEME: Dosya adı "Model_Sonuclari.xlsx" olarak düzeltildi.
     dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", r"seminerveriler_son.xlsx")
     dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari.xlsx")
     
@@ -130,7 +129,12 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
         for merkez in merkezler_koordinat:
             en_yakin_indeks = distance.cdist([merkez], df_koordinat[['Enlem', 'Boylam']].values, 'euclidean').argmin()
             il_bilgisi = df_koordinat.iloc[en_yakin_indeks]
-            isleme_aday_illeri.append({'Il_Adi': il_bilgisi['Il_Adi'], 'Enlem': il_bilgisi['Enlem'], 'Boylam': il_bilgisi['Boylam']})
+            # ÖNEMLİ DÜZELTME: Mavi pinin üstünü kapatmaması için kırmızı pinlere ufak bir görsel offset (kaydırma) eklendi
+            isleme_aday_illeri.append({
+                'Il_Adi': il_bilgisi['Il_Adi'], 
+                'Enlem': il_bilgisi['Enlem'] - 0.08, 
+                'Boylam': il_bilgisi['Boylam'] + 0.08
+            })
             
         minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
             
@@ -159,7 +163,6 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
             st.markdown("<p style='font-size:12px; color:#94a3b8;'>🔵 Mavi: Toplama Merkezleri | 🔴 Kırmızı: İşleme Merkezleri | 🟢 Yeşil: 2. Ömür / Bertaraf</p>", unsafe_allow_html=True)
             
             m = folium.Map(location=[39.0, 35.0], zoom_start=6) 
-            # 2. GÜNCELLEME: Tüm Pareto sonuçlarının (aday_toplama) haritaya çizilmesi sağlandı
             for idx, row in aday_toplama.iterrows():
                 folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m)
             for il in isleme_aday_illeri:
@@ -195,10 +198,18 @@ if st.session_state.model_calisti:
         aday_toplama = df_pareto.iloc[:optimum_index + 1].copy()
         
         merkezler_koordinat = KMeans(n_clusters=3, random_state=42, n_init=10).fit(aday_toplama[['Enlem', 'Boylam']].values).cluster_centers_
-        isleme_aday_illeri = [{'Il_Adi': df_koordinat.iloc[distance.cdist([m], df_koordinat[['Enlem', 'Boylam']].values, 'euclidean').argmin()]['Il_Adi'], 
-                               'Enlem': df_koordinat.iloc[distance.cdist([m], df_koordinat[['Enlem', 'Boylam']].values, 'euclidean').argmin()]['Enlem'], 
-                               'Boylam': df_koordinat.iloc[distance.cdist([m], df_koordinat[['Enlem', 'Boylam']].values, 'euclidean').argmin()]['Boylam']} 
-                              for m in merkezler_koordinat]
+        
+        isleme_aday_illeri = []
+        for merkez in merkezler_koordinat:
+            en_yakin_indeks = distance.cdist([merkez], df_koordinat[['Enlem', 'Boylam']].values, 'euclidean').argmin()
+            il_bilgisi = df_koordinat.iloc[en_yakin_indeks]
+            # ÖNEMLİ DÜZELTME: Mavi pinin üstünü kapatmaması için kırmızı pinlere ufak bir görsel offset eklendi
+            isleme_aday_illeri.append({
+                'Il_Adi': il_bilgisi['Il_Adi'], 
+                'Enlem': il_bilgisi['Enlem'] - 0.08, 
+                'Boylam': il_bilgisi['Boylam'] + 0.08
+            })
+            
         minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
 
         df_w = pd.read_excel(dosya_sonuc, sheet_name='W_Tesis_Akislari')
@@ -278,7 +289,6 @@ if st.session_state.model_calisti:
         
         m_sonuc = folium.Map(location=[39.0, 35.0], zoom_start=6) 
         
-        # 2. GÜNCELLEME: Tüm Pareto sonuçlarının (aday_toplama) haritaya çizilmesi sağlandı
         for idx, row in aday_toplama.iterrows():
             folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m_sonuc)
         for il in isleme_aday_illeri:
