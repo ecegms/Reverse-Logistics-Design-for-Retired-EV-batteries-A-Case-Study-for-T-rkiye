@@ -96,45 +96,11 @@ if st.session_state.adim in [1, 2]:
 
         # --- ADIM 2: GUROBİ AKIŞLARI (DÜZ, KESİKLİ TURKUAZ ÇİZGİLER VE DETAYLI TOOLTIP) ---
         if st.session_state.adim == 2:
-            st.success("Gurobi Optimizasyon Sonuçları Haritaya İşlendi!")
+            st.success("Gurobi Optimizasyon Sonuçları Haritaya İşlendi! (Tesisler Arası Akışlar)")
             
-            # 1. Z Akışları (İllerden -> Toplama Merkezlerine)
-            try:
-                df_z = pd.read_excel(dosya_sonuc, sheet_name="Z_Sehir_Toplama")
-                df_z = df_z[df_z['Miktar'] > 0]
-                
-                # Dönemleri tek bir tooltipte toplamak için gruplama
-                z_grouped = df_z.groupby(['Sehir(i)', 'Toplama(j)'])
-                
-                for (c_idx, v_idx), group in z_grouped:
-                    c_idx, v_idx = int(c_idx), int(v_idx)
-                    bas_isim = df_koordinat.iloc[c_idx]['Il_Adi']
-                    bitis_isim = aday_toplama.iloc[v_idx]['Il_Adi']
-                    bas_k = [df_koordinat.iloc[c_idx]['Enlem'], df_koordinat.iloc[c_idx]['Boylam']]
-                    bitis_k = [aday_toplama.iloc[v_idx]['Enlem'], aday_toplama.iloc[v_idx]['Boylam']]
-                    
-                    # Tooltip HTML Hazırlığı (Görseldeki gibi Yıl/Dönem kırılımı)
-                    tooltip_html = f"<div style='font-family: sans-serif; font-size: 13px; min-width: 120px;'>"
-                    tooltip_html += f"<b style='font-size: 14px;'>{bas_isim} ➔ {bitis_isim}</b><hr style='margin: 4px 0;'>"
-                    for _, r in group.iterrows():
-                        donem = int(r.get('Donem', 1))
-                        miktar = float(r['Miktar'])
-                        tooltip_html += f"Dönem {donem}: {miktar:,.0f} br<br>"
-                    tooltip_html += "</div>"
-                    
-                    # Düz, kesikli, turkuaz çizgi
-                    folium.PolyLine(
-                        locations=[bas_k, bitis_k],
-                        color='teal',
-                        weight=2.5,
-                        dash_array='8, 8',
-                        opacity=0.8,
-                        tooltip=tooltip_html
-                    ).add_to(m)
-            except Exception as e:
-                st.warning(f"Z Akışları çizilemedi. Hata: {e}")
+            # Not: Z (Şehir -> Toplama) akışlarının haritayı karmaşıklaştırmaması için çizimi kaldırıldı.
 
-            # 2. W Akışları (Toplama->İşleme, İşleme->İkinci Ömür/Geri Dönüşüm)
+            # Sadece W Akışları (Toplama->İşleme, İşleme->İkinci Ömür/Geri Dönüşüm)
             try:
                 df_w = pd.read_excel(dosya_sonuc, sheet_name="W_Tesis_Akislari")
                 df_w = df_w[df_w['Miktar'] > 0]
@@ -148,7 +114,7 @@ if st.session_state.adim in [1, 2]:
                     if 'W1' in akis_tipi:
                         # Toplama -> İşleme
                         v_idx = int(v_val)
-                        bas_isim = aday_toplama.iloc[c_idx]['Il_Adi']
+                        bas_isim = aday_toplama.iloc[c_idx]['Il_Adi'] + " (Toplama)"
                         bitis_isim = f"İşleme {v_idx}"
                         bas_k = [aday_toplama.iloc[c_idx]['Enlem'], aday_toplama.iloc[c_idx]['Boylam']]
                         bitis_k = [isleme_merkezleri[v_idx][0], isleme_merkezleri[v_idx][1]]
