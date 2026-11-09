@@ -101,7 +101,7 @@ if st.session_state.adim in [1, 2]:
             st.metric("Aday Toplama Merkezi (Dinamik Pareto)", f"{len(aday_toplama)} İl")
 
         # --- HARİTA OLUŞTURMA (CartoDB Dark Matter) ---
-        m = folium.Map(location=[39.0, 35.0], zoom_start=6, tiles="CartoDB dark_matter")
+      m = folium.Map(location=[39.0, 35.0], zoom_start=6, tiles="OpenStreetMap")
 
         for _, row in aday_toplama.iterrows():
             folium.Marker(
