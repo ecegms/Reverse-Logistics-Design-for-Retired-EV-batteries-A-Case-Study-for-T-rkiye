@@ -38,7 +38,7 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2933/2933991.png", width=60)
     st.header("⚙️ Veri Bağlantıları")
     dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", r"seminerveriler_son.xlsx")
-    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari_ilk.xlsx")
+    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari.xlsx") # ilk kelimesi kaldırıldı
     st.markdown("---")
     if st.button("🔄 Sistemi Sıfırla (Başa Dön)"):
         st.session_state.hesaplandi = False
@@ -74,13 +74,19 @@ if not st.session_state.hesaplandi and not st.session_state.model_calisti:
 # =====================================================
 if st.session_state.hesaplandi and not st.session_state.model_calisti:
     try:
-        df_koordinat = pd.read_excel(dosya_girdi, sheet_name='Koordinatlar')
-        df_DE = pd.read_excel(dosya_girdi, sheet_name='DE')
-        veri_DE = df_DE.iloc[:, -5:].values 
-        df_koordinat['Toplam_Talep'] = [np.sum(veri_DE[2*i : 2*i+2]) for i in range(81)]
+        # Doğru sayfalardan veri çekimi eklendi
+        df_talep = pd.read_excel(dosya_girdi, sheet_name="Sayfa1")
+        df_koor = pd.read_excel(dosya_girdi, sheet_name="Koordinatlar")
         
-        # --- PARETO ANALİZİ DÜZELTİLDİ ---
-        df_pareto = df_koordinat.sort_values(by='Toplam_Talep', ascending=False).copy()
+        df_talep = df_talep.rename(columns={'Şehir (İl)': 'Il_Adi', 'İldeki Elektrikli Araç Sayısı': 'Toplam_Talep'})
+        df_talep['Il_Adi'] = df_talep['Il_Adi'].astype(str).str.strip()
+        df_koor['Il_Adi'] = df_koor['Il_Adi'].astype(str).str.strip()
+        
+        df_koordinat = pd.merge(df_talep, df_koor[['Il_Adi', 'Enlem', 'Boylam']], on='Il_Adi', how='inner')
+        df_koordinat['Toplam_Talep'] = pd.to_numeric(df_koordinat['Toplam_Talep'], errors='coerce').fillna(0)
+        
+        # --- PARETO ANALİZİ ---
+        df_pareto = df_koordinat.sort_values(by='Toplam_Talep', ascending=False).reset_index(drop=True)
         df_pareto['Kümülatif_%'] = df_pareto['Toplam_Talep'].cumsum() / df_pareto['Toplam_Talep'].sum()
         df_pareto['Fark'] = abs(df_pareto['Kümülatif_%'] - 0.80)
         optimum_index = df_pareto['Fark'].idxmin()
@@ -105,7 +111,8 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
             st.write(f"**📍 Toplama Adayları:** {len(aday_toplama)} il (Pareto %80)")
             isleme_isimleri = ", ".join([il['Il_Adi'] for il in isleme_aday_illeri])
             st.write(f"**⚙️ İşleme / Geri Dönüşüm:** {isleme_isimleri}")
-            st.dataframe(aday_toplama[['Il_Adi', 'Toplam_Talep']].head(8), use_container_width=True)
+            # Tüm bulunan illeri göstermesi için head(8) kısıtlaması kaldırıldı
+            st.dataframe(aday_toplama[['Il_Adi', 'Toplam_Talep']], use_container_width=True)
             st.markdown("</div>", unsafe_allow_html=True)
             
             if st.button("🌟 2. Adım: Optimizasyon Modelini Çalıştır"):
@@ -115,7 +122,6 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
         with c2:
             m = folium.Map(location=[39.0, 35.0], zoom_start=6) 
             
-            # 1. Aşama İkonlar ve Bilgi Kutuları (Tooltip) eklendi
             for idx, row in aday_toplama.iterrows():
                 folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m)
             for il in isleme_aday_illeri:
@@ -132,12 +138,19 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
 # =====================================================
 if st.session_state.model_calisti:
     try:
-        df_koordinat = pd.read_excel(dosya_girdi, sheet_name='Koordinatlar')
-        df_DE = pd.read_excel(dosya_girdi, sheet_name='DE')
-        df_koordinat['Toplam_Talep'] = [np.sum(df_DE.iloc[:, -5:].values[2*i : 2*i+2]) for i in range(81)]
+        # Doğru sayfalardan veri çekimi eklendi
+        df_talep = pd.read_excel(dosya_girdi, sheet_name="Sayfa1")
+        df_koor = pd.read_excel(dosya_girdi, sheet_name="Koordinatlar")
         
-        # --- PARETO ANALİZİ DÜZELTİLDİ ---
-        df_pareto = df_koordinat.sort_values(by='Toplam_Talep', ascending=False).copy()
+        df_talep = df_talep.rename(columns={'Şehir (İl)': 'Il_Adi', 'İldeki Elektrikli Araç Sayısı': 'Toplam_Talep'})
+        df_talep['Il_Adi'] = df_talep['Il_Adi'].astype(str).str.strip()
+        df_koor['Il_Adi'] = df_koor['Il_Adi'].astype(str).str.strip()
+        
+        df_koordinat = pd.merge(df_talep, df_koor[['Il_Adi', 'Enlem', 'Boylam']], on='Il_Adi', how='inner')
+        df_koordinat['Toplam_Talep'] = pd.to_numeric(df_koordinat['Toplam_Talep'], errors='coerce').fillna(0)
+        
+        # --- PARETO ANALİZİ ---
+        df_pareto = df_koordinat.sort_values(by='Toplam_Talep', ascending=False).reset_index(drop=True)
         df_pareto['Kümülatif_%'] = df_pareto['Toplam_Talep'].cumsum() / df_pareto['Toplam_Talep'].sum()
         df_pareto['Fark'] = abs(df_pareto['Kümülatif_%'] - 0.80)
         optimum_index = df_pareto['Fark'].idxmin()
@@ -164,7 +177,6 @@ if st.session_state.model_calisti:
         
         m_sonuc = folium.Map(location=[39.0, 35.0], zoom_start=6) 
         
-        # 2. Aşama İkonlar ve Bilgi Kutuları (Tooltip) Düzeltildi
         for idx, row in aday_toplama.iterrows():
             folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m_sonuc)
         for il in isleme_aday_illeri:
@@ -172,7 +184,7 @@ if st.session_state.model_calisti:
         for il in minimax_adaylari:
             folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="green", icon="recycle", prefix='fa'), tooltip=f"2. Ömür / Geri Dönüşüm: {il['Il_Adi']}").add_to(m_sonuc)
 
-        # Oklar ve Çizgiler
+        # Oklar ve Çizgiler (Eski kodun birebir aynısı, dokunulmadı)
         for index, toplama in aday_toplama.iterrows():
             en_kisa = float('inf'); hedef_isleme = None
             for isleme in isleme_aday_illeri:
@@ -191,7 +203,7 @@ if st.session_state.model_calisti:
 
         st_folium(m_sonuc, width=1500, height=550) 
         
-        # --- PERFORMANS DASHBOARD ---
+        # --- PERFORMANS DASHBOARD (Eski kodun birebir aynısı, dokunulmadı) ---
         st.markdown("---")
         st.markdown("<h3 style='text-align: center;'>📈 Performans Kokpiti</h3>", unsafe_allow_html=True)
         
