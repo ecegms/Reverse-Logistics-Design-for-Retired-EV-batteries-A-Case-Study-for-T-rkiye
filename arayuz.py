@@ -38,7 +38,7 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2933/2933991.png", width=60)
     st.header("⚙️ Veri Bağlantıları")
     dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", r"seminerveriler_son.xlsx")
-    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari.xlsx") # ilk kelimesi kaldırıldı
+    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari.xlsx")
     st.markdown("---")
     if st.button("🔄 Sistemi Sıfırla (Başa Dön)"):
         st.session_state.hesaplandi = False
@@ -74,11 +74,13 @@ if not st.session_state.hesaplandi and not st.session_state.model_calisti:
 # =====================================================
 if st.session_state.hesaplandi and not st.session_state.model_calisti:
     try:
-        # Doğru sayfalardan veri çekimi eklendi
+        # Veri Okuma: İsim karmaşasından kurtulmak için direkt 1. ve 5. sütunları çekiyoruz
         df_talep = pd.read_excel(dosya_girdi, sheet_name="Sayfa1")
+        df_talep = df_talep.iloc[:, [0, 4]] # 0: Şehir(İl), 4: İldeki Elektrikli Araç Sayısı
+        df_talep.columns = ['Il_Adi', 'Toplam_Talep']
+        
         df_koor = pd.read_excel(dosya_girdi, sheet_name="Koordinatlar")
         
-        df_talep = df_talep.rename(columns={'Şehir (İl)': 'Il_Adi', 'İldeki Elektrikli Araç Sayısı': 'Toplam_Talep'})
         df_talep['Il_Adi'] = df_talep['Il_Adi'].astype(str).str.strip()
         df_koor['Il_Adi'] = df_koor['Il_Adi'].astype(str).str.strip()
         
@@ -111,7 +113,6 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
             st.write(f"**📍 Toplama Adayları:** {len(aday_toplama)} il (Pareto %80)")
             isleme_isimleri = ", ".join([il['Il_Adi'] for il in isleme_aday_illeri])
             st.write(f"**⚙️ İşleme / Geri Dönüşüm:** {isleme_isimleri}")
-            # Tüm bulunan illeri göstermesi için head(8) kısıtlaması kaldırıldı
             st.dataframe(aday_toplama[['Il_Adi', 'Toplam_Talep']], use_container_width=True)
             st.markdown("</div>", unsafe_allow_html=True)
             
@@ -138,11 +139,13 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
 # =====================================================
 if st.session_state.model_calisti:
     try:
-        # Doğru sayfalardan veri çekimi eklendi
+        # Veri Okuma: Sütun isimlendirmesi hatalarını aşmak için aynı indeks mantığı kullanılıyor
         df_talep = pd.read_excel(dosya_girdi, sheet_name="Sayfa1")
+        df_talep = df_talep.iloc[:, [0, 4]]
+        df_talep.columns = ['Il_Adi', 'Toplam_Talep']
+        
         df_koor = pd.read_excel(dosya_girdi, sheet_name="Koordinatlar")
         
-        df_talep = df_talep.rename(columns={'Şehir (İl)': 'Il_Adi', 'İldeki Elektrikli Araç Sayısı': 'Toplam_Talep'})
         df_talep['Il_Adi'] = df_talep['Il_Adi'].astype(str).str.strip()
         df_koor['Il_Adi'] = df_koor['Il_Adi'].astype(str).str.strip()
         
@@ -184,7 +187,6 @@ if st.session_state.model_calisti:
         for il in minimax_adaylari:
             folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="green", icon="recycle", prefix='fa'), tooltip=f"2. Ömür / Geri Dönüşüm: {il['Il_Adi']}").add_to(m_sonuc)
 
-        # Oklar ve Çizgiler (Eski kodun birebir aynısı, dokunulmadı)
         for index, toplama in aday_toplama.iterrows():
             en_kisa = float('inf'); hedef_isleme = None
             for isleme in isleme_aday_illeri:
@@ -203,7 +205,6 @@ if st.session_state.model_calisti:
 
         st_folium(m_sonuc, width=1500, height=550) 
         
-        # --- PERFORMANS DASHBOARD (Eski kodun birebir aynısı, dokunulmadı) ---
         st.markdown("---")
         st.markdown("<h3 style='text-align: center;'>📈 Performans Kokpiti</h3>", unsafe_allow_html=True)
         
