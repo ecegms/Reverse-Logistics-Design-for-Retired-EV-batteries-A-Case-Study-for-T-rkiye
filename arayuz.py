@@ -38,25 +38,26 @@ if st.sidebar.button("Sıfırla 🔄"):
     st.session_state.adim = 0
     st.rerun()
 
-# --- KARŞILAMA EKRANI ---
-if st.session_state.adim == 0:
-    st.title("🔋 Elektrikli Araç Bataryaları Tersine Lojistik Ağı")
-    st.markdown("""
-    ### Karar Destek Sistemine (KDS) Hoş Geldiniz
-    Bu sistem, Türkiye'deki emekliye ayrılmış lityum-iyon EV bataryalarının toplanması, işlenmesi ve geri dönüştürülmesi için optimum tedarik zinciri ağını tasarlar.
-    
-    * **Adım 1:** Güncel araç taleplerini analiz eder, dinamik Pareto (%80) mantığıyla toplama merkezlerini belirler ve K-Means ile işleme adaylarını seçer.
-    * **Adım 2:** Gurobi matematiksel optimizasyon modelinin sonuçlarını okuyarak tesis açılış kararlarını ve lojistik akış ağını interaktif haritada görselleştirir.
-    
-    👈 *Başlamak için sol menüdeki butonları kullanın.*
-    """)
+# --- YAY ÇİZGİSİ (BEZIER CURVE) ALGORİTMASI ---
+def kavisli_yay_hesapla(p1, p2, offset=0.15, num_points=30):
+    """İki nokta arasına kalın ve kavisli (yay şeklinde) çizgi çekmek için noktalar dizisi oluşturur"""
+    p1 = np.array(p1)
+    p2 = np.array(p2)
+    dist = np.linalg.norm(p2 - p1)
+    if dist == 0: return [p1.tolist(), p2.tolist()]
+    mid = (p1 + p2) / 2
+    direction = p2 - p1
+    normal = np.array([-direction[1], direction[0]])
+    normal = normal / np.linalg.norm(normal)
+    control = mid + normal * (dist * offset)
+    t = np.linspace(0, 1, num_points)
+    curve = np.outer((1-t)**2, p1) + np.outer(2*(1-t)*t, control) + np.outer(t**2, p2)
+    return curve.tolist()
 
 # --- ORTAK FONKSİYON: DİNAMİK PARETO ---
 def dinamik_pareto_hesapla(df, talep_sutunu='Toplam_Talep', hedef=0.80):
     df = df.dropna(subset=[talep_sutunu]).copy()
     df[talep_sutunu] = pd.to_numeric(df[talep_sutunu], errors='coerce').fillna(0)
-    
-    # İndeksleri sıfırlıyoruz ki Gurobi'deki 0, 1, 2.. indeksleriyle tam eşleşsin
     df_sirali = df.sort_values(by=talep_sutunu, ascending=False).reset_index(drop=True)
     df_sirali['Kumulatif_Yuzde'] = df_sirali[talep_sutunu].cumsum() / df_sirali[talep_sutunu].sum()
     df_sirali['Fark'] = abs(df_sirali['Kumulatif_Yuzde'] - hedef)
@@ -66,7 +67,7 @@ def dinamik_pareto_hesapla(df, talep_sutunu='Toplam_Talep', hedef=0.80):
 # --- ADIM 1 VE 2 İÇİN ANA GÖVDE ---
 if st.session_state.adim in [1, 2]:
     try:
-        # 1. Excel Verilerini İki Farklı Sayfadan Okuma
+        # 1. Excel Verilerini Oku
         df_talep = pd.read_excel(dosya_veri, sheet_name="Sayfa1")
         df_koor = pd.read_excel(dosya_veri, sheet_name="Koordinatlar")
         
@@ -76,12 +77,9 @@ if st.session_state.adim in [1, 2]:
         
         df_koordinat = pd.merge(df_talep, df_koor[['Il_Adi', 'Enlem', 'Boylam']], on='Il_Adi', how='inner')
             
-        # --- DİNAMİK PARETO UYGULAMASI ---
+        # --- DİNAMİK PARETO VE K-MEANS ---
         aday_toplama = dinamik_pareto_hesapla(df_koordinat)
-        
-        # --- K-MEANS İŞLEME MERKEZLERİ (3 ADET) ---
         X = aday_toplama[['Enlem', 'Boylam']]
-        # random_state=42 sayesinde kümelerin indeksleri (0,1,2) Gurobi'dekiyle hep aynı sırayı tutar
         kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
         aday_toplama['Küme'] = kmeans.fit_predict(X)
         isleme_merkezleri = kmeans.cluster_centers_
@@ -94,61 +92,101 @@ if st.session_state.adim in [1, 2]:
         with col2:
             st.metric("Aday Toplama Merkezi (Dinamik Pareto)", f"{len(aday_toplama)} İl")
 
-        # --- HARİTA OLUŞTURMA (OpenStreetMap) ---
+        # --- HARİTA OLUŞTURMA ---
         m = folium.Map(location=[39.0, 35.0], zoom_start=6, tiles="OpenStreetMap")
 
         for _, row in aday_toplama.iterrows():
             folium.Marker(
                 location=[row['Enlem'], row['Boylam']],
                 popup=f"{row['Il_Adi']} (Talep: {row['Toplam_Talep']:,.0f})",
-                tooltip=row['Il_Adi'],
+                tooltip=row['Il_Adi'] + " (Toplama Merkezi)",
                 icon=folium.Icon(color="lightblue", icon="building", prefix="fa")
             ).add_to(m)
 
         for i, center in enumerate(isleme_merkezleri):
             folium.Marker(
                 location=[center[0], center[1]],
-                popup=f"İşleme Adayı {i}", # Gurobi'deki indeksle uyması için i kullanıldı
-                tooltip="İşleme Merkezi",
+                popup=f"İşleme Adayı {i}",
+                tooltip=f"İşleme Merkezi {i}",
                 icon=folium.Icon(color="red", icon="industry", prefix="fa")
             ).add_to(m)
 
-        # --- ADIM 2: GUROBİ AKIŞLARI (ÖRÜMCEK AĞI) ---
+        # --- ADIM 2: GUROBİ AKIŞLARI (KAVİSLİ EĞRİLER) ---
         if st.session_state.adim == 2:
-            st.success("Gurobi Optimizasyon Sonuçları Haritaya İşlendi!")
+            st.success("Gurobi Optimizasyon Sonuçları Haritaya İşlendi! (Tüm Batarya ve Hücre Akışları)")
+            
             try:
-                # W_Tesis_Akislari sayfasını oku
-                df_akis = pd.read_excel(dosya_sonuc, sheet_name="W_Tesis_Akislari")
-                
-                # Sadece Toplama -> İşleme (W1) akışlarını filtrele
-                df_w1 = df_akis[df_akis['Akis_Tipi'] == 'W1(Top->Isl)']
-                
-                for _, row in df_w1.iterrows():
-                    miktar = row['Miktar']
+                # 1. Z Akışları (İllerden -> Toplama Merkezlerine | BATARYA)
+                df_z = pd.read_excel(dosya_sonuc, sheet_name="Z_Sehir_Toplama")
+                for _, row in df_z.iterrows():
+                    miktar = float(row.get('Miktar', 0))
                     if miktar > 0:
-                        # Gurobi'nin verdiği çıkış ve varış indekslerini al
-                        cikis_idx = int(row['Cikis'])
-                        varis_idx = int(row['Varis'])
+                        c_idx, v_idx = int(row['Cikis']), int(row['Varis'])
                         
-                        # 1. Toplama merkezinin (Cikis) gerçek koordinatlarını bul
-                        baslangic_enlem = aday_toplama.iloc[cikis_idx]['Enlem']
-                        baslangic_boylam = aday_toplama.iloc[cikis_idx]['Boylam']
+                        bas_isim = df_koordinat.iloc[c_idx]['Il_Adi'] + " (İl)"
+                        bas_k = [df_koordinat.iloc[c_idx]['Enlem'], df_koordinat.iloc[c_idx]['Boylam']]
                         
-                        # 2. İşleme merkezinin (Varis) gerçek koordinatlarını bul
-                        bitis_enlem = isleme_merkezleri[varis_idx][0]
-                        bitis_boylam = isleme_merkezleri[varis_idx][1]
+                        bitis_isim = aday_toplama.iloc[v_idx]['Il_Adi'] + " (Toplama)"
+                        bitis_k = [aday_toplama.iloc[v_idx]['Enlem'], aday_toplama.iloc[v_idx]['Boylam']]
                         
-                        baslangic = [baslangic_enlem, baslangic_boylam]
-                        bitis = [bitis_enlem, bitis_boylam]
+                        yay = kavisli_yay_hesapla(bas_k, bitis_k, offset=0.1)
+                        bilgi = f"<div style='font-family: Arial; font-size: 12px;'><b>Tip:</b> Batarya (Sürekli)<br><b>Nereden:</b> {bas_isim}<br><b>Nereye:</b> {bitis_isim}<br><b>Miktar:</b> {miktar:,.0f} Batarya</div>"
                         
-                        # Çizgiyi haritaya ekle
-                        folium.PolyLine(
-                            locations=[baslangic, bitis],
-                            color='#fca311',
-                            weight=2,
-                            opacity=0.7,
-                            tooltip=f"Akış (W1): {miktar:,.0f} Batarya"
-                        ).add_to(m)
+                        # Batarya -> Kalın, Sürekli Siyah Çizgi
+                        folium.PolyLine(locations=yay, color='black', weight=4, opacity=0.7, tooltip=bilgi).add_to(m)
+            except Exception as e:
+                pass # Z sayfası yoksa diğer akışlara geç
+
+            try:
+                # 2. W Akışları (Toplama->İşleme, İşleme->İkinci Ömür/Geri Dönüşüm)
+                df_w = pd.read_excel(dosya_sonuc, sheet_name="W_Tesis_Akislari")
+                for _, row in df_w.iterrows():
+                    miktar = float(row.get('Miktar', 0))
+                    if miktar <= 0: continue
+                    
+                    akis_tipi = str(row['Akis_Tipi'])
+                    c_idx = int(row['Cikis'])
+                    v_val = row['Varis']
+                    
+                    if 'W1' in akis_tipi:
+                        # Toplama -> İşleme | BATARYA
+                        v_idx = int(v_val)
+                        bas_isim = aday_toplama.iloc[c_idx]['Il_Adi'] + " (Toplama)"
+                        bas_k = [aday_toplama.iloc[c_idx]['Enlem'], aday_toplama.iloc[c_idx]['Boylam']]
+                        
+                        bitis_isim = f"İşleme Adayı {v_idx}"
+                        bitis_k = [isleme_merkezleri[v_idx][0], isleme_merkezleri[v_idx][1]]
+                        
+                        yay = kavisli_yay_hesapla(bas_k, bitis_k, offset=0.15)
+                        bilgi = f"<div style='font-family: Arial; font-size: 12px;'><b>Tip:</b> Batarya (Sürekli)<br><b>Nereden:</b> {bas_isim}<br><b>Nereye:</b> {bitis_isim}<br><b>Miktar:</b> {miktar:,.0f} Batarya</div>"
+                        
+                        # Batarya -> Kalın, Sürekli Siyah Çizgi
+                        folium.PolyLine(locations=yay, color='black', weight=4, opacity=0.8, tooltip=bilgi).add_to(m)
+                        
+                    elif 'W2' in akis_tipi or 'W3' in akis_tipi:
+                        # İşleme -> İkinci Ömür / Geri Dönüşüm | HÜCRE
+                        bas_isim = f"İşleme Adayı {c_idx}"
+                        bas_k = [isleme_merkezleri[c_idx][0], isleme_merkezleri[c_idx][1]]
+                        
+                        try:
+                            v_idx = int(v_val)
+                            if v_idx < len(aday_toplama):
+                                bitis_k = [aday_toplama.iloc[v_idx]['Enlem'], aday_toplama.iloc[v_idx]['Boylam']]
+                                il_adi = aday_toplama.iloc[v_idx]['Il_Adi']
+                            else:
+                                bitis_k = [df_koordinat.iloc[v_idx]['Enlem'], df_koordinat.iloc[v_idx]['Boylam']]
+                                il_adi = df_koordinat.iloc[v_idx]['Il_Adi']
+                            bitis_isim = il_adi + (" (2. Ömür)" if 'W2' in akis_tipi else " (Geri Dönüşüm)")
+                        except:
+                            # 'Bertaraf' vb. string ifadeler gelirse sembolik çıkış
+                            bitis_k = [bas_k[0] + 0.3, bas_k[1] + 0.3]
+                            bitis_isim = str(v_val)
+                            
+                        yay = kavisli_yay_hesapla(bas_k, bitis_k, offset=0.15)
+                        bilgi = f"<div style='font-family: Arial; font-size: 12px;'><b>Tip:</b> Hücre (Kesikli)<br><b>Nereden:</b> {bas_isim}<br><b>Nereye:</b> {bitis_isim}<br><b>Miktar:</b> {miktar:,.0f} Hücre</div>"
+                        
+                        # Hücre -> Kalın, Kesikli (Dashed) Siyah Çizgi
+                        folium.PolyLine(locations=yay, color='black', weight=4, dash_array='10, 10', opacity=0.9, tooltip=bilgi).add_to(m)
             except Exception as e:
                 st.warning(f"Akış çizgileri çizilirken bir hata oluştu. Detay: {e}")
 
@@ -164,6 +202,6 @@ if st.session_state.adim in [1, 2]:
             st.dataframe(tablo_gosterim, use_container_width=True)
 
     except ValueError as e:
-        st.error(f"❌ Excel okuma hatası! Lütfen 'Sayfa1' ve 'Koordinatlar' sayfalarının doğruluğunu kontrol edin. Detay: {e}")
+        st.error(f"❌ Excel okuma hatası! Lütfen sayfaların doğruluğunu kontrol edin. Detay: {e}")
     except Exception as e:
         st.error(f"❌ Beklenmeyen bir hata oluştu: {e}")
