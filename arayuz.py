@@ -78,9 +78,13 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
         df_DE = pd.read_excel(dosya_girdi, sheet_name='DE')
         veri_DE = df_DE.iloc[:, -5:].values 
         df_koordinat['Toplam_Talep'] = [np.sum(veri_DE[2*i : 2*i+2]) for i in range(81)]
+        
+        # --- PARETO ANALİZİ DÜZELTİLDİ ---
         df_pareto = df_koordinat.sort_values(by='Toplam_Talep', ascending=False).copy()
         df_pareto['Kümülatif_%'] = df_pareto['Toplam_Talep'].cumsum() / df_pareto['Toplam_Talep'].sum()
-        aday_toplama = df_pareto[df_pareto['Kümülatif_%'] <= 0.80].copy()
+        df_pareto['Fark'] = abs(df_pareto['Kümülatif_%'] - 0.80)
+        optimum_index = df_pareto['Fark'].idxmin()
+        aday_toplama = df_pareto.iloc[:optimum_index + 1].copy()
         
         X = aday_toplama[['Enlem', 'Boylam']].values
         kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
@@ -131,8 +135,13 @@ if st.session_state.model_calisti:
         df_koordinat = pd.read_excel(dosya_girdi, sheet_name='Koordinatlar')
         df_DE = pd.read_excel(dosya_girdi, sheet_name='DE')
         df_koordinat['Toplam_Talep'] = [np.sum(df_DE.iloc[:, -5:].values[2*i : 2*i+2]) for i in range(81)]
-        df_pareto = df_koordinat.sort_values(by='Toplam_Talep', ascending=False)
-        aday_toplama = df_pareto[df_pareto['Toplam_Talep'].cumsum() / df_pareto['Toplam_Talep'].sum() <= 0.80].copy()
+        
+        # --- PARETO ANALİZİ DÜZELTİLDİ ---
+        df_pareto = df_koordinat.sort_values(by='Toplam_Talep', ascending=False).copy()
+        df_pareto['Kümülatif_%'] = df_pareto['Toplam_Talep'].cumsum() / df_pareto['Toplam_Talep'].sum()
+        df_pareto['Fark'] = abs(df_pareto['Kümülatif_%'] - 0.80)
+        optimum_index = df_pareto['Fark'].idxmin()
+        aday_toplama = df_pareto.iloc[:optimum_index + 1].copy()
         
         merkezler_koordinat = KMeans(n_clusters=3, random_state=42, n_init=10).fit(aday_toplama[['Enlem', 'Boylam']].values).cluster_centers_
         isleme_aday_illeri = [{'Il_Adi': df_koordinat.iloc[distance.cdist([m], df_koordinat[['Enlem', 'Boylam']].values, 'euclidean').argmin()]['Il_Adi'], 
