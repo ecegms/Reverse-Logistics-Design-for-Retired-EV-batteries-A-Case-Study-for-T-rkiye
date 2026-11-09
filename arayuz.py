@@ -53,7 +53,6 @@ with st.sidebar:
     dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", r"seminerveriler_son.xlsx")
     dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari.xlsx")
     
-    # Veri Sağlığı / Durum Göstergesi
     st.markdown("---")
     st.subheader("📊 Sistem Durumu")
     try:
@@ -179,7 +178,6 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
 # =====================================================
 if st.session_state.model_calisti:
     try:
-        # Ağırlıkların H ve G sayfalarından çekilmesi (KG Dönüşümü için)
         df_H = pd.read_excel(dosya_girdi, sheet_name='H', header=None)
         df_G = pd.read_excel(dosya_girdi, sheet_name='G', header=None)
         agirlik_hucre = {1: float(df_G.iloc[0, 0]), 2: float(df_G.iloc[1, 0])}
@@ -221,7 +219,6 @@ if st.session_state.model_calisti:
         df_stok = pd.read_excel(dosya_sonuc, sheet_name='Stoklar_I1_I2_I3_I4')
         df_tesis = pd.read_excel(dosya_sonuc, sheet_name='Tesis_Acilis_Kararlari')
         
-        # Kg hesabı ve Miktar_kg sütununun eklenmesi
         def hesapla_kg(row):
             b_tipi = int(row.get('Batarya', 1))
             akis = str(row['Akis_Tipi'])
@@ -244,13 +241,11 @@ if st.session_state.model_calisti:
             with sekme:
                 st.markdown(f"### 🎯 {yil}. Yıl (Periyot) Analiz ve Karar Kokpiti")
                 
-                # O yıla ait verileri filtreleme
                 df_tesis_p = df_tesis[df_tesis['Donem'] == yil] if 'Donem' in df_tesis.columns else pd.DataFrame()
                 df_z_p = df_z[df_z['Donem'] == yil] if 'Donem' in df_z.columns else pd.DataFrame()
                 df_w_p = df_w[df_w['Donem'] == yil] if 'Donem' in df_w.columns else pd.DataFrame()
                 df_stok_p = df_stok[df_stok['Donem'] == yil] if 'Donem' in df_stok.columns else pd.DataFrame()
 
-                # Dönemsel KPI Kartları
                 k1, k2, k3, k4 = st.columns(4)
                 p_toplanan = int(df_z_p['Miktar'].sum()) if not df_z_p.empty else 0
                 p_tesis_sayisi = len(df_tesis_p) if not df_tesis_p.empty else 0
@@ -262,7 +257,6 @@ if st.session_state.model_calisti:
 
                 st.write("")
                 
-                # Tablolar
                 t1, t2, t3, t4 = st.tabs([f"🏭 {yil}. Yıl Açılan Tesisler", f"📦 {yil}. Yıl Şehir Toplamaları (Z)", f"🔄 {yil}. Yıl Akışlar (W)", f"📊 {yil}. Yıl Stoklar"])
                 
                 with t1:
@@ -278,13 +272,18 @@ if st.session_state.model_calisti:
                     if not df_stok_p.empty: st.dataframe(df_stok_p, use_container_width=True)
                     else: st.info(f"{yil}. Yıl için stok verisi bulunamadı.")
 
-                # Dönemsel Grafikler
+                # Dönemsel Grafikler (Kümülatif Toplama Dağılımı eklendi)
                 st.markdown("---")
                 gc1, gc2 = st.columns(2)
                 with gc1:
                     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
-                    if not df_z_p.empty:
-                        fig_p1 = px.bar(df_z_p, x='Il_Adi' if 'Il_Adi' in df_z_p.columns else df_z_p.columns[0], y='Miktar', title=f"{yil}. Yıl İl Bazlı Toplama Dağılımı", color_discrete_sequence=['#38bdf8'])
+                    if not df_z.empty and 'Donem' in df_z.columns:
+                        # 1. yıldan mevcut yıla kadar olan verileri kümülatif filtreleme
+                        df_z_kumulatif = df_z[df_z['Donem'] <= yil].groupby('Toplama(j)')['Miktar'].sum().reset_index()
+                        # İl adlarını eşleme
+                        df_z_kumulatif['Il_Adi'] = df_z_kumulatif['Toplama(j)'].map(lambda idx: aday_toplama.iloc[int(idx)]['Il_Adi'] if int(idx) < len(aday_toplama) else f"Merkez {idx}")
+                        
+                        fig_p1 = px.bar(df_z_kumulatif, x='Il_Adi', y='Miktar', title=f"1. Yıl - {yil}. Yıl Kümülatif İl Bazlı Toplama Dağılımı", color_discrete_sequence=['#38bdf8'])
                         fig_p1.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white')
                         st.plotly_chart(fig_p1, use_container_width=True)
                     else:
@@ -293,7 +292,6 @@ if st.session_state.model_calisti:
                 with gc2:
                     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
                     if not df_w_p.empty:
-                        # Akış dağılımı grafiği doğrudan 'kg' üzerinden yapılıyor
                         w_p_grouped = df_w_p.groupby('Akis_Tipi')['Miktar_kg'].sum().reset_index()
                         fig_p2 = px.pie(w_p_grouped, names='Akis_Tipi', values='Miktar_kg', title=f"{yil}. Yıl Akış Tipi Dağılımı (kg)", hole=0.4, color_discrete_sequence=px.colors.qualitative.Bold)
                         fig_p2.update_traces(textinfo='percent+label', hovertemplate='%{label}<br>%{value:,.0f} kg<br>%{percent}')
@@ -306,6 +304,7 @@ if st.session_state.model_calisti:
         # --- GENEL HARİTA VE TÜMÜNÜ GÖSTEREN KOKPİT ---
         st.markdown("---")
         st.markdown("<h3 style='text-align: center;'>🗺️ Genel Lojistik Akış Ağı Haritası</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:13px; color:#94a3b8; text-align:center;'>🔴 Sürekli Kırmızı Çizgiler: Toplama ➔ İşleme | ⚫ Kesikli Siyah Çizgiler: İşleme ➔ 2. Ömür / Geri Dönüşüm</p>", unsafe_allow_html=True)
         
         m_sonuc = folium.Map(location=[39.0, 35.0], zoom_start=6) 
         
@@ -319,21 +318,31 @@ if st.session_state.model_calisti:
         w1_donem = df_w[df_w['Akis_Tipi'].str.startswith('W1')].groupby('Donem')['Miktar'].sum() if not df_w.empty else pd.Series()
         w23_donem = df_w[df_w['Akis_Tipi'].str.startswith('W2') | df_w['Akis_Tipi'].str.startswith('W3')].groupby('Donem')['Miktar'].sum() if not df_w.empty else pd.Series()
 
+        # 1. Toplama ➔ İşleme Çizgileri (Sürekli ve Kırmızı)
         for index, toplama in aday_toplama.iterrows():
             en_kisa = float('inf'); hedef_isleme = None
             for isleme in isleme_aday_illeri:
                 mesafe = distance.euclidean([toplama['Enlem'], toplama['Boylam']], [isleme['Enlem'], isleme['Boylam']])
                 if mesafe < en_kisa: en_kisa = mesafe; hedef_isleme = isleme
             if hedef_isleme:
-                html = f"<div style='width:150px'><b>{toplama['Il_Adi']} ➔ {hedef_isleme['Il_Adi']}</b><hr style='margin:2px;'>"
+                html = f"<div style='width:150px'><b>{toplama['Il_Adi']} ➔ {hedef_isleme['Il_Adi']} (Batarya Akışı)</b><hr style='margin:2px;'>"
                 for d, m_val in w1_donem.items(): html += f"Yıl {d}: {int(m_val/len(aday_toplama)):,} br<br>"
-                folium.PolyLine(locations=[[toplama['Enlem'], toplama['Boylam']], [hedef_isleme['Enlem'], hedef_isleme['Boylam']]], color='#38bdf8', weight=2, dash_array='4', tooltip=folium.Tooltip(html+"</div>")).add_to(m_sonuc)
+                folium.PolyLine(
+                    locations=[[toplama['Enlem'], toplama['Boylam']], [hedef_isleme['Enlem'], hedef_isleme['Boylam']]], 
+                    color='#ef4444', weight=2.5, opacity=0.8, 
+                    tooltip=folium.Tooltip(html+"</div>")
+                ).add_to(m_sonuc)
 
+        # 2. İşleme ➔ İkinci Ömür / Geri Dönüşüm Çizgileri (Kesikli ve Siyah)
         for i, isleme_il in enumerate(isleme_aday_illeri):
             hedef_il = minimax_adaylari[i]
-            html = f"<div style='width:150px'><b>{isleme_il['Il_Adi']} ➔ Entegre Tesis</b><hr style='margin:2px;'>"
+            html = f"<div style='width:150px'><b>{isleme_il['Il_Adi']} ➔ 2.Ömür / Geri Dönüşüm</b><hr style='margin:2px;'>"
             for d, m_val in w23_donem.items(): html += f"Yıl {d}: {int(m_val/len(isleme_aday_illeri)):,} br<br>"
-            folium.PolyLine(locations=[[isleme_il['Enlem'], isleme_il['Boylam']], [hedef_il['Enlem'], hedef_il['Boylam']]], color='#ef4444', weight=3, tooltip=folium.Tooltip(html+"</div>")).add_to(m_sonuc)
+            folium.PolyLine(
+                locations=[[isleme_il['Enlem'], isleme_il['Boylam']], [hedef_il['Enlem'], hedef_il['Boylam']]], 
+                color='#000000', weight=3, dash_array='8, 8', opacity=0.9, 
+                tooltip=folium.Tooltip(html+"</div>")
+            ).add_to(m_sonuc)
 
         st_folium(m_sonuc, width=1400, height=550) 
         
