@@ -100,7 +100,7 @@ if st.session_state.adim in [1, 2]:
         with col2:
             st.metric("Aday Toplama Merkezi (Dinamik Pareto)", f"{len(aday_toplama)} İl")
 
-        # --- HARİTA OLUŞTURMA (CartoDB Dark Matter) ---
+        # --- HARİTA OLUŞTURMA (OpenStreetMap) ---
         m = folium.Map(location=[39.0, 35.0], zoom_start=6, tiles="OpenStreetMap")
 
         for _, row in aday_toplama.iterrows():
@@ -123,7 +123,8 @@ if st.session_state.adim in [1, 2]:
         if st.session_state.adim == 2:
             st.success("Gurobi Optimizasyon Sonuçları Haritaya İşlendi!")
             try:
-                df_w1 = pd.read_excel(dosya_sonuc, sheet_name="W1")
+                # Sayfa adı güncellendi
+                df_w1 = pd.read_excel(dosya_sonuc, sheet_name="W_Tesis_Akislari")
                 for _, row in df_w1.iterrows():
                     if row['Miktar'] > 0:
                         baslangic = [row['Baslangic_Enlem'], row['Baslangic_Boylam']]
@@ -136,7 +137,7 @@ if st.session_state.adim in [1, 2]:
                             tooltip=f"Akış Miktarı: {row['Miktar']} Birim"
                         ).add_to(m)
             except Exception as e:
-                st.warning(f"Akış çizgileri çizilirken bir hata oluştu veya W1 sayfası bulunamadı. Detay: {e}")
+                st.warning(f"Akış çizgileri çizilirken bir hata oluştu veya W_Tesis_Akislari sayfası bulunamadı. Detay: {e}")
 
         # Haritayı ve Tabloyu Ekrana Basma
         col_map, col_table = st.columns([3, 1])
