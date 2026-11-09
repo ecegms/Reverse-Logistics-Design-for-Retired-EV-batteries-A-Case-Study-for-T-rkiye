@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import folium
 from streamlit_folium import st_folium
 from sklearn.cluster import KMeans
@@ -37,21 +36,6 @@ if st.sidebar.button("2. Adımı Çalıştır (Gurobi Entegrasyonu)"):
 if st.sidebar.button("Sıfırla 🔄"):
     st.session_state.adim = 0
     st.rerun()
-
-# --- YAY ÇİZGİSİ (BEZIER CURVE) ALGORİTMASI ---
-def kavisli_yay_hesapla(p1, p2, offset=0.2, num_points=30):
-    p1 = np.array(p1)
-    p2 = np.array(p2)
-    dist = np.linalg.norm(p2 - p1)
-    if dist == 0: return [p1.tolist(), p2.tolist()]
-    mid = (p1 + p2) / 2
-    direction = p2 - p1
-    normal = np.array([-direction[1], direction[0]])
-    normal = normal / np.linalg.norm(normal)
-    control = mid + normal * (dist * offset)
-    t = np.linspace(0, 1, num_points)
-    curve = np.outer((1-t)**2, p1) + np.outer(2*(1-t)*t, control) + np.outer(t**2, p2)
-    return curve.tolist()
 
 # --- ORTAK FONKSİYON: DİNAMİK PARETO ---
 def dinamik_pareto_hesapla(df, talep_sutunu='Toplam_Talep', hedef=0.80):
@@ -98,7 +82,7 @@ if st.session_state.adim in [1, 2]:
         for _, row in aday_toplama.iterrows():
             folium.Marker(
                 location=[row['Enlem'], row['Boylam']],
-                tooltip=row['Il_Adi'] + " (Toplama Merkezi)",
+                tooltip=row['Il_Adi'] + " (Toplama)",
                 icon=folium.Icon(color="lightblue", icon="building", prefix="fa")
             ).add_to(m)
 
@@ -106,67 +90,81 @@ if st.session_state.adim in [1, 2]:
         for i, center in enumerate(isleme_merkezleri):
             folium.Marker(
                 location=[center[0], center[1]],
-                tooltip=f"İşleme Merkezi {i}",
+                tooltip=f"İşleme Tesisi {i}",
                 icon=folium.Icon(color="red", icon="industry", prefix="fa")
             ).add_to(m)
 
-        # --- ADIM 2: GUROBİ AKIŞLARI (KAVİSLİ SİYAH EĞRİLER) ---
+        # --- ADIM 2: GUROBİ AKIŞLARI (DÜZ, KESİKLİ TURKUAZ ÇİZGİLER VE DETAYLI TOOLTIP) ---
         if st.session_state.adim == 2:
-            st.success("Gurobi Optimizasyon Sonuçları Haritaya İşlendi! (Tüm Batarya ve Hücre Akışları)")
+            st.success("Gurobi Optimizasyon Sonuçları Haritaya İşlendi!")
             
-            # 1. Z Akışları (İllerden -> Toplama Merkezlerine | BATARYA)
+            # 1. Z Akışları (İllerden -> Toplama Merkezlerine)
             try:
                 df_z = pd.read_excel(dosya_sonuc, sheet_name="Z_Sehir_Toplama")
-                for _, row in df_z.iterrows():
-                    miktar = float(row.get('Miktar', 0))
-                    if miktar > 0:
-                        # Gurobi Excel'indeki sütun adlarına ('Sehir(i)' ve 'Toplama(j)') göre düzeltildi!
-                        c_idx = int(row['Sehir(i)'])
-                        v_idx = int(row['Toplama(j)'])
-                        
-                        bas_isim = df_koordinat.iloc[c_idx]['Il_Adi'] + " (İl)"
-                        bas_k = [df_koordinat.iloc[c_idx]['Enlem'], df_koordinat.iloc[c_idx]['Boylam']]
-                        
-                        bitis_isim = aday_toplama.iloc[v_idx]['Il_Adi'] + " (Toplama)"
-                        bitis_k = [aday_toplama.iloc[v_idx]['Enlem'], aday_toplama.iloc[v_idx]['Boylam']]
-                        
-                        yay = kavisli_yay_hesapla(bas_k, bitis_k, offset=0.1)
-                        bilgi = f"<div style='font-family: Arial; font-size: 12px;'><b>Tip:</b> Batarya (Sürekli)<br><b>Nereden:</b> {bas_isim}<br><b>Nereye:</b> {bitis_isim}<br><b>Miktar:</b> {miktar:,.0f} Adet</div>"
-                        
-                        # Kalın Siyah Sürekli Çizgi
-                        folium.PolyLine(locations=yay, color='black', weight=2.5, opacity=0.6, tooltip=bilgi).add_to(m)
+                df_z = df_z[df_z['Miktar'] > 0]
+                
+                # Dönemleri tek bir tooltipte toplamak için gruplama
+                z_grouped = df_z.groupby(['Sehir(i)', 'Toplama(j)'])
+                
+                for (c_idx, v_idx), group in z_grouped:
+                    c_idx, v_idx = int(c_idx), int(v_idx)
+                    bas_isim = df_koordinat.iloc[c_idx]['Il_Adi']
+                    bitis_isim = aday_toplama.iloc[v_idx]['Il_Adi']
+                    bas_k = [df_koordinat.iloc[c_idx]['Enlem'], df_koordinat.iloc[c_idx]['Boylam']]
+                    bitis_k = [aday_toplama.iloc[v_idx]['Enlem'], aday_toplama.iloc[v_idx]['Boylam']]
+                    
+                    # Tooltip HTML Hazırlığı (Görseldeki gibi Yıl/Dönem kırılımı)
+                    tooltip_html = f"<div style='font-family: sans-serif; font-size: 13px; min-width: 120px;'>"
+                    tooltip_html += f"<b style='font-size: 14px;'>{bas_isim} ➔ {bitis_isim}</b><hr style='margin: 4px 0;'>"
+                    for _, r in group.iterrows():
+                        donem = int(r.get('Donem', 1))
+                        miktar = float(r['Miktar'])
+                        tooltip_html += f"Dönem {donem}: {miktar:,.0f} br<br>"
+                    tooltip_html += "</div>"
+                    
+                    # Düz, kesikli, turkuaz çizgi
+                    folium.PolyLine(
+                        locations=[bas_k, bitis_k],
+                        color='teal',
+                        weight=2.5,
+                        dash_array='8, 8',
+                        opacity=0.8,
+                        tooltip=tooltip_html
+                    ).add_to(m)
             except Exception as e:
                 st.warning(f"Z Akışları çizilemedi. Hata: {e}")
 
             # 2. W Akışları (Toplama->İşleme, İşleme->İkinci Ömür/Geri Dönüşüm)
             try:
                 df_w = pd.read_excel(dosya_sonuc, sheet_name="W_Tesis_Akislari")
-                for _, row in df_w.iterrows():
-                    miktar = float(row.get('Miktar', 0))
-                    if miktar <= 0: continue
-                    
-                    akis_tipi = str(row['Akis_Tipi'])
-                    c_idx = int(row['Cikis'])
-                    v_val = row['Varis']
+                df_w = df_w[df_w['Miktar'] > 0]
+                
+                w_grouped = df_w.groupby(['Cikis', 'Varis', 'Akis_Tipi'])
+                
+                for (c_idx, v_val, akis_tipi), group in w_grouped:
+                    c_idx = int(c_idx)
+                    akis_tipi = str(akis_tipi)
                     
                     if 'W1' in akis_tipi:
-                        # Toplama -> İşleme | BATARYA
+                        # Toplama -> İşleme
                         v_idx = int(v_val)
-                        bas_isim = aday_toplama.iloc[c_idx]['Il_Adi'] + " (Toplama)"
+                        bas_isim = aday_toplama.iloc[c_idx]['Il_Adi']
+                        bitis_isim = f"İşleme {v_idx}"
                         bas_k = [aday_toplama.iloc[c_idx]['Enlem'], aday_toplama.iloc[c_idx]['Boylam']]
-                        
-                        bitis_isim = f"İşleme Tesisi {v_idx}"
                         bitis_k = [isleme_merkezleri[v_idx][0], isleme_merkezleri[v_idx][1]]
                         
-                        yay = kavisli_yay_hesapla(bas_k, bitis_k, offset=0.2)
-                        bilgi = f"<div style='font-family: Arial; font-size: 12px;'><b>Tip:</b> Batarya (Sürekli)<br><b>Nereden:</b> {bas_isim}<br><b>Nereye:</b> {bitis_isim}<br><b>Miktar:</b> {miktar:,.0f} Adet</div>"
+                        tooltip_html = f"<div style='font-family: sans-serif; font-size: 13px; min-width: 120px;'>"
+                        tooltip_html += f"<b style='font-size: 14px;'>{bas_isim} ➔ {bitis_isim}</b><hr style='margin: 4px 0;'>"
+                        for _, r in group.iterrows():
+                            donem = int(r.get('Donem', 1))
+                            tooltip_html += f"Dönem {donem}: {float(r['Miktar']):,.0f} br<br>"
+                        tooltip_html += "</div>"
                         
-                        # Kalın Siyah Sürekli Çizgi
-                        folium.PolyLine(locations=yay, color='black', weight=4, opacity=0.8, tooltip=bilgi).add_to(m)
+                        folium.PolyLine(locations=[bas_k, bitis_k], color='teal', weight=2.5, dash_array='8, 8', opacity=0.8, tooltip=tooltip_html).add_to(m)
                         
                     elif 'W2' in akis_tipi or 'W3' in akis_tipi:
-                        # İşleme -> İkinci Ömür veya Geri Dönüşüm | HÜCRE
-                        bas_isim = f"İşleme Tesisi {c_idx}"
+                        # İşleme -> İkinci Ömür / Geri Dönüşüm
+                        bas_isim = f"İşleme {c_idx}"
                         bas_k = [isleme_merkezleri[c_idx][0], isleme_merkezleri[c_idx][1]]
                         
                         if str(v_val).isdigit():
@@ -174,22 +172,24 @@ if st.session_state.adim in [1, 2]:
                             bitis_k = [df_koordinat.iloc[v_idx]['Enlem'], df_koordinat.iloc[v_idx]['Boylam']]
                             il_adi = df_koordinat.iloc[v_idx]['Il_Adi']
                             
-                            # Tesis tiplerine özel BAĞIMSIZ pinler ekleniyor (Toplamaya döndü sanılmasın diye)
                             if 'W2' in akis_tipi:
                                 bitis_isim = il_adi + " (2. Ömür)"
                                 folium.Marker(location=bitis_k, tooltip=bitis_isim, icon=folium.Icon(color="green", icon="leaf", prefix="fa")).add_to(m)
                             else:
-                                bitis_isim = il_adi + " (Geri Dönüşüm)"
+                                bitis_isim = il_adi + " (G. Dönüşüm)"
                                 folium.Marker(location=bitis_k, tooltip=bitis_isim, icon=folium.Icon(color="purple", icon="recycle", prefix="fa")).add_to(m)
                         else:
-                            bitis_k = [bas_k[0] + 0.5, bas_k[1] + 0.5]
+                            bitis_k = [bas_k[0] + 0.3, bas_k[1] + 0.3]
                             bitis_isim = str(v_val)
                             
-                        yay = kavisli_yay_hesapla(bas_k, bitis_k, offset=0.25)
-                        bilgi = f"<div style='font-family: Arial; font-size: 12px;'><b>Tip:</b> Hücre (Kesikli)<br><b>Nereden:</b> {bas_isim}<br><b>Nereye:</b> {bitis_isim}<br><b>Miktar:</b> {miktar:,.0f} Adet</div>"
+                        tooltip_html = f"<div style='font-family: sans-serif; font-size: 13px; min-width: 120px;'>"
+                        tooltip_html += f"<b style='font-size: 14px;'>{bas_isim} ➔ {bitis_isim}</b><hr style='margin: 4px 0;'>"
+                        for _, r in group.iterrows():
+                            donem = int(r.get('Donem', 1))
+                            tooltip_html += f"Dönem {donem}: {float(r['Miktar']):,.0f} br<br>"
+                        tooltip_html += "</div>"
                         
-                        # Kalın, Kesikli (Dashed) Siyah Çizgi
-                        folium.PolyLine(locations=yay, color='black', weight=4, dash_array='10, 10', opacity=0.9, tooltip=bilgi).add_to(m)
+                        folium.PolyLine(locations=[bas_k, bitis_k], color='teal', weight=2.5, dash_array='8, 8', opacity=0.8, tooltip=tooltip_html).add_to(m)
             except Exception as e:
                 st.warning(f"W Akışları çizilemedi. Hata: {e}")
 
