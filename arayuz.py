@@ -129,7 +129,6 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
         for merkez in merkezler_koordinat:
             en_yakin_indeks = distance.cdist([merkez], df_koordinat[['Enlem', 'Boylam']].values, 'euclidean').argmin()
             il_bilgisi = df_koordinat.iloc[en_yakin_indeks]
-            # ÖNEMLİ DÜZELTME: Mavi pinin üstünü kapatmaması için kırmızı pinlere ufak bir görsel offset (kaydırma) eklendi
             isleme_aday_illeri.append({
                 'Il_Adi': il_bilgisi['Il_Adi'], 
                 'Enlem': il_bilgisi['Enlem'] - 0.08, 
@@ -180,6 +179,12 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
 # =====================================================
 if st.session_state.model_calisti:
     try:
+        # Ağırlıkların H ve G sayfalarından çekilmesi (KG Dönüşümü için)
+        df_H = pd.read_excel(dosya_girdi, sheet_name='H', header=None)
+        df_G = pd.read_excel(dosya_girdi, sheet_name='G', header=None)
+        agirlik_hucre = {1: float(df_G.iloc[0, 0]), 2: float(df_G.iloc[1, 0])}
+        agirlik_batarya = {1: float(df_H.iloc[0, 0] * df_G.iloc[0, 0]), 2: float(df_H.iloc[1, 0] * df_G.iloc[1, 0])}
+
         df_talep = pd.read_excel(dosya_girdi, sheet_name="Sayfa1")
         df_talep = df_talep.iloc[:, [0, 4]]
         df_talep.columns = ['Il_Adi', 'Toplam_Talep']
@@ -203,7 +208,6 @@ if st.session_state.model_calisti:
         for merkez in merkezler_koordinat:
             en_yakin_indeks = distance.cdist([merkez], df_koordinat[['Enlem', 'Boylam']].values, 'euclidean').argmin()
             il_bilgisi = df_koordinat.iloc[en_yakin_indeks]
-            # ÖNEMLİ DÜZELTME: Mavi pinin üstünü kapatmaması için kırmızı pinlere ufak bir görsel offset eklendi
             isleme_aday_illeri.append({
                 'Il_Adi': il_bilgisi['Il_Adi'], 
                 'Enlem': il_bilgisi['Enlem'] - 0.08, 
@@ -217,6 +221,19 @@ if st.session_state.model_calisti:
         df_stok = pd.read_excel(dosya_sonuc, sheet_name='Stoklar_I1_I2_I3_I4')
         df_tesis = pd.read_excel(dosya_sonuc, sheet_name='Tesis_Acilis_Kararlari')
         
+        # Kg hesabı ve Miktar_kg sütununun eklenmesi
+        def hesapla_kg(row):
+            b_tipi = int(row.get('Batarya', 1))
+            akis = str(row['Akis_Tipi'])
+            miktar = float(row['Miktar'])
+            if 'W1' in akis:
+                return miktar * agirlik_batarya.get(b_tipi, 0)
+            else:
+                return miktar * agirlik_hucre.get(b_tipi, 0)
+                
+        if not df_w.empty:
+            df_w['Miktar_kg'] = df_w.apply(hesapla_kg, axis=1)
+
         st.success("✅ Optimizasyon modeli başarıyla çözüldü. 5 farklı periyoda ait dönemsel ağ kararları ve performans analizleri aşağıdadır.")
 
         # --- 5 FARKLI PERİYOT İÇİN SEKMELER ---
@@ -276,7 +293,10 @@ if st.session_state.model_calisti:
                 with gc2:
                     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
                     if not df_w_p.empty:
-                        fig_p2 = px.pie(df_w_p, names='Akis_Tipi', values='Miktar', title=f"{yil}. Yıl Akış Tipi Dağılımı", hole=0.4, color_discrete_sequence=px.colors.qualitative.Bold)
+                        # Akış dağılımı grafiği doğrudan 'kg' üzerinden yapılıyor
+                        w_p_grouped = df_w_p.groupby('Akis_Tipi')['Miktar_kg'].sum().reset_index()
+                        fig_p2 = px.pie(w_p_grouped, names='Akis_Tipi', values='Miktar_kg', title=f"{yil}. Yıl Akış Tipi Dağılımı (kg)", hole=0.4, color_discrete_sequence=px.colors.qualitative.Bold)
+                        fig_p2.update_traces(textinfo='percent+label', hovertemplate='%{label}<br>%{value:,.0f} kg<br>%{percent}')
                         fig_p2.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white')
                         st.plotly_chart(fig_p2, use_container_width=True)
                     else:
