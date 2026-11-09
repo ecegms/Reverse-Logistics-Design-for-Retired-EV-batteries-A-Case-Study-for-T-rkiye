@@ -56,6 +56,7 @@ def dinamik_pareto_hesapla(df, talep_sutunu='Toplam_Talep', hedef=0.80):
     df = df.dropna(subset=[talep_sutunu]).copy()
     df[talep_sutunu] = pd.to_numeric(df[talep_sutunu], errors='coerce').fillna(0)
     
+    # İndeksleri sıfırlıyoruz ki Gurobi'deki 0, 1, 2.. indeksleriyle tam eşleşsin
     df_sirali = df.sort_values(by=talep_sutunu, ascending=False).reset_index(drop=True)
     df_sirali['Kumulatif_Yuzde'] = df_sirali[talep_sutunu].cumsum() / df_sirali[talep_sutunu].sum()
     df_sirali['Fark'] = abs(df_sirali['Kumulatif_Yuzde'] - hedef)
@@ -69,17 +70,10 @@ if st.session_state.adim in [1, 2]:
         df_talep = pd.read_excel(dosya_veri, sheet_name="Sayfa1")
         df_koor = pd.read_excel(dosya_veri, sheet_name="Koordinatlar")
         
-        # "Sayfa1" Sütun isimlerini düzeltme
-        df_talep = df_talep.rename(columns={
-            'Şehir (İl)': 'Il_Adi',
-            'İldeki Elektrikli Araç Sayısı': 'Toplam_Talep'
-        })
-        
-        # Eşleşme hatası olmaması için il adlarının başındaki/sonundaki boşlukları temizleme
+        df_talep = df_talep.rename(columns={'Şehir (İl)': 'Il_Adi', 'İldeki Elektrikli Araç Sayısı': 'Toplam_Talep'})
         df_talep['Il_Adi'] = df_talep['Il_Adi'].astype(str).str.strip()
         df_koor['Il_Adi'] = df_koor['Il_Adi'].astype(str).str.strip()
         
-        # İki tabloyu 'Il_Adi' üzerinden birleştirme (VLOOKUP Mantığı)
         df_koordinat = pd.merge(df_talep, df_koor[['Il_Adi', 'Enlem', 'Boylam']], on='Il_Adi', how='inner')
             
         # --- DİNAMİK PARETO UYGULAMASI ---
@@ -87,13 +81,13 @@ if st.session_state.adim in [1, 2]:
         
         # --- K-MEANS İŞLEME MERKEZLERİ (3 ADET) ---
         X = aday_toplama[['Enlem', 'Boylam']]
+        # random_state=42 sayesinde kümelerin indeksleri (0,1,2) Gurobi'dekiyle hep aynı sırayı tutar
         kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
         aday_toplama['Küme'] = kmeans.fit_predict(X)
         isleme_merkezleri = kmeans.cluster_centers_
 
         st.title(f"📊 {'1. Aşama: Aday Lokasyonlar' if st.session_state.adim == 1 else '2. Aşama: Optimize Edilmiş Lojistik Ağ (Gurobi)'}")
         
-        # --- 2x2 DASHBOARD ---
         col1, col2 = st.columns(2)
         with col1:
             st.metric("Toplam Talep (EV Batarya)", f"{df_koordinat['Toplam_Talep'].sum():,.0f}")
@@ -114,7 +108,7 @@ if st.session_state.adim in [1, 2]:
         for i, center in enumerate(isleme_merkezleri):
             folium.Marker(
                 location=[center[0], center[1]],
-                popup=f"İşleme Adayı {i+1}",
+                popup=f"İşleme Adayı {i}", # Gurobi'deki indeksle uyması için i kullanıldı
                 tooltip="İşleme Merkezi",
                 icon=folium.Icon(color="red", icon="industry", prefix="fa")
             ).add_to(m)
@@ -123,21 +117,40 @@ if st.session_state.adim in [1, 2]:
         if st.session_state.adim == 2:
             st.success("Gurobi Optimizasyon Sonuçları Haritaya İşlendi!")
             try:
-                # Sayfa adı güncellendi
-                df_w1 = pd.read_excel(dosya_sonuc, sheet_name="W_Tesis_Akislari")
+                # W_Tesis_Akislari sayfasını oku
+                df_akis = pd.read_excel(dosya_sonuc, sheet_name="W_Tesis_Akislari")
+                
+                # Sadece Toplama -> İşleme (W1) akışlarını filtrele
+                df_w1 = df_akis[df_akis['Akis_Tipi'] == 'W1(Top->Isl)']
+                
                 for _, row in df_w1.iterrows():
-                    if row['Miktar'] > 0:
-                        baslangic = [row['Baslangic_Enlem'], row['Baslangic_Boylam']]
-                        bitis = [row['Bitis_Enlem'], row['Bitis_Boylam']]
+                    miktar = row['Miktar']
+                    if miktar > 0:
+                        # Gurobi'nin verdiği çıkış ve varış indekslerini al
+                        cikis_idx = int(row['Cikis'])
+                        varis_idx = int(row['Varis'])
+                        
+                        # 1. Toplama merkezinin (Cikis) gerçek koordinatlarını bul
+                        baslangic_enlem = aday_toplama.iloc[cikis_idx]['Enlem']
+                        baslangic_boylam = aday_toplama.iloc[cikis_idx]['Boylam']
+                        
+                        # 2. İşleme merkezinin (Varis) gerçek koordinatlarını bul
+                        bitis_enlem = isleme_merkezleri[varis_idx][0]
+                        bitis_boylam = isleme_merkezleri[varis_idx][1]
+                        
+                        baslangic = [baslangic_enlem, baslangic_boylam]
+                        bitis = [bitis_enlem, bitis_boylam]
+                        
+                        # Çizgiyi haritaya ekle
                         folium.PolyLine(
                             locations=[baslangic, bitis],
                             color='#fca311',
                             weight=2,
                             opacity=0.7,
-                            tooltip=f"Akış Miktarı: {row['Miktar']} Birim"
+                            tooltip=f"Akış (W1): {miktar:,.0f} Batarya"
                         ).add_to(m)
             except Exception as e:
-                st.warning(f"Akış çizgileri çizilirken bir hata oluştu veya W_Tesis_Akislari sayfası bulunamadı. Detay: {e}")
+                st.warning(f"Akış çizgileri çizilirken bir hata oluştu. Detay: {e}")
 
         # Haritayı ve Tabloyu Ekrana Basma
         col_map, col_table = st.columns([3, 1])
