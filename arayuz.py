@@ -4,8 +4,6 @@ import numpy as np
 import folium
 from streamlit_folium import st_folium
 from sklearn.cluster import KMeans
-import plotly.express as px
-import plotly.graph_objects as go
 
 # --- SAYFA AYARLARI VE CSS ---
 st.set_page_config(page_title="EV Batarya KDS", layout="wide", initial_sidebar_state="expanded")
@@ -25,12 +23,10 @@ st.sidebar.title("KDS Kontrol Paneli")
 st.sidebar.markdown("---")
 
 dosya_veri = st.sidebar.text_input("Girdi Verileri (.xlsx):", "seminerveriler_son.xlsx")
-# DOSYA ADI BURADA KALICI OLARAK DÜZELTİLDİ:
 dosya_sonuc = st.sidebar.text_input("Model Sonuçları (.xlsx):", "Model_Sonuclari.xlsx")
 
 st.sidebar.markdown("---")
 
-# Session State ile adımları kontrol etme
 if 'adim' not in st.session_state:
     st.session_state.adim = 0
 
@@ -57,25 +53,35 @@ if st.session_state.adim == 0:
 
 # --- ORTAK FONKSİYON: DİNAMİK PARETO ---
 def dinamik_pareto_hesapla(df, talep_sutunu='Toplam_Talep', hedef=0.80):
-    """
-    Veriyi büyükten küçüğe sıralar, kümülatif toplamı hesaplar 
-    ve %80'e mutlak olarak en yakın sonucu veren il sayısını otomatik seçer.
-    """
+    df = df.dropna(subset=[talep_sutunu]).copy()
+    df[talep_sutunu] = pd.to_numeric(df[talep_sutunu], errors='coerce').fillna(0)
+    
     df_sirali = df.sort_values(by=talep_sutunu, ascending=False).reset_index(drop=True)
     df_sirali['Kumulatif_Yuzde'] = df_sirali[talep_sutunu].cumsum() / df_sirali[talep_sutunu].sum()
-    # 0.80'e olan mutlak farkı hesapla
     df_sirali['Fark'] = abs(df_sirali['Kumulatif_Yuzde'] - hedef)
-    # Farkın en küçük olduğu satırın indeksini (optimum kesim noktasını) bul
     optimum_index = df_sirali['Fark'].idxmin()
-    # O indekse kadar olan tüm illeri al
     return df_sirali.iloc[:optimum_index + 1].copy()
 
 # --- ADIM 1 VE 2 İÇİN ANA GÖVDE ---
 if st.session_state.adim in [1, 2]:
     try:
-        # 1. Excel Verilerini Okuma
-        df_koordinat = pd.read_excel(dosya_veri, sheet_name="Koordinatlar")
+        # 1. Excel Verilerini İki Farklı Sayfadan Okuma
+        df_talep = pd.read_excel(dosya_veri, sheet_name="Sayfa1")
+        df_koor = pd.read_excel(dosya_veri, sheet_name="Koordinatlar")
         
+        # "Sayfa1" Sütun isimlerini düzeltme
+        df_talep = df_talep.rename(columns={
+            'Şehir (İl)': 'Il_Adi',
+            'İldeki Elektrikli Araç Sayısı': 'Toplam_Talep'
+        })
+        
+        # Eşleşme hatası olmaması için il adlarının başındaki/sonundaki boşlukları temizleme
+        df_talep['Il_Adi'] = df_talep['Il_Adi'].astype(str).str.strip()
+        df_koor['Il_Adi'] = df_koor['Il_Adi'].astype(str).str.strip()
+        
+        # İki tabloyu 'Il_Adi' üzerinden birleştirme (VLOOKUP Mantığı)
+        df_koordinat = pd.merge(df_talep, df_koor[['Il_Adi', 'Enlem', 'Boylam']], on='Il_Adi', how='inner')
+            
         # --- DİNAMİK PARETO UYGULAMASI ---
         aday_toplama = dinamik_pareto_hesapla(df_koordinat)
         
@@ -92,22 +98,19 @@ if st.session_state.adim in [1, 2]:
         with col1:
             st.metric("Toplam Talep (EV Batarya)", f"{df_koordinat['Toplam_Talep'].sum():,.0f}")
         with col2:
-            # Artık dinamik hesaplandığı için kaç il çıkarsa onu yazar
             st.metric("Aday Toplama Merkezi (Dinamik Pareto)", f"{len(aday_toplama)} İl")
 
         # --- HARİTA OLUŞTURMA (CartoDB Dark Matter) ---
         m = folium.Map(location=[39.0, 35.0], zoom_start=6, tiles="CartoDB dark_matter")
 
-        # Toplama Merkezlerini Haritaya Ekle (Bina İkonu)
         for _, row in aday_toplama.iterrows():
             folium.Marker(
                 location=[row['Enlem'], row['Boylam']],
-                popup=f"{row['Il_Adi']} (Talep: {row['Toplam_Talep']})",
+                popup=f"{row['Il_Adi']} (Talep: {row['Toplam_Talep']:,.0f})",
                 tooltip=row['Il_Adi'],
                 icon=folium.Icon(color="lightblue", icon="building", prefix="fa")
             ).add_to(m)
 
-        # İşleme Merkezlerini Haritaya Ekle (Fabrika İkonu)
         for i, center in enumerate(isleme_merkezleri):
             folium.Marker(
                 location=[center[0], center[1]],
@@ -120,15 +123,11 @@ if st.session_state.adim in [1, 2]:
         if st.session_state.adim == 2:
             st.success("Gurobi Optimizasyon Sonuçları Haritaya İşlendi!")
             try:
-                # Gurobi sonuç dosyasını okuma (W1 akışları örneği)
                 df_w1 = pd.read_excel(dosya_sonuc, sheet_name="W1")
-                # Eğer Excel'inde akışlar (Başlangıç_Enlem, Başlangıç_Boylam, Bitiş_Enlem, Bitiş_Boylam, Miktar) formatındaysa:
                 for _, row in df_w1.iterrows():
-                    if row['Miktar'] > 0:  # Sadece akış olan rotaları çiz
+                    if row['Miktar'] > 0:
                         baslangic = [row['Baslangic_Enlem'], row['Baslangic_Boylam']]
                         bitis = [row['Bitis_Enlem'], row['Bitis_Boylam']]
-                        
-                        # Örümcek Ağı Çizgisi ve Tooltip
                         folium.PolyLine(
                             locations=[baslangic, bitis],
                             color='#fca311',
@@ -137,19 +136,20 @@ if st.session_state.adim in [1, 2]:
                             tooltip=f"Akış Miktarı: {row['Miktar']} Birim"
                         ).add_to(m)
             except Exception as e:
-                st.warning(f"Akış çizgileri çizilirken bir hata oluştu veya W1 sayfası bulunamadı. Lütfen Excel yapısını kontrol edin. Detay: {e}")
+                st.warning(f"Akış çizgileri çizilirken bir hata oluştu veya W1 sayfası bulunamadı. Detay: {e}")
 
-        # Haritayı ve Pareto Tablosunu Ekrana Basma
+        # Haritayı ve Tabloyu Ekrana Basma
         col_map, col_table = st.columns([3, 1])
         with col_map:
             st_folium(m, width=900, height=600)
         with col_table:
             st.markdown("### Dinamik Pareto Listesi")
             st.caption("%80'e en yakın optimum kesim")
-            # Sınırlama olmadan tüm tespit edilen illeri göster
-            st.dataframe(aday_toplama[['Il_Adi', 'Toplam_Talep', 'Kumulatif_Yuzde']], use_container_width=True)
+            tablo_gosterim = aday_toplama[['Il_Adi', 'Toplam_Talep', 'Kumulatif_Yuzde']].copy()
+            tablo_gosterim['Kumulatif_Yuzde'] = (tablo_gosterim['Kumulatif_Yuzde'] * 100).round(2).astype(str) + '%'
+            st.dataframe(tablo_gosterim, use_container_width=True)
 
-    except FileNotFoundError as e:
-        st.error(f"❌ Dosya bulunamadı! Lütfen sol menüden dosya adlarının doğruluğunu kontrol et. Hata Detayı: {e}")
+    except ValueError as e:
+        st.error(f"❌ Excel okuma hatası! Lütfen 'Sayfa1' ve 'Koordinatlar' sayfalarının doğruluğunu kontrol edin. Detay: {e}")
     except Exception as e:
         st.error(f"❌ Beklenmeyen bir hata oluştu: {e}")
