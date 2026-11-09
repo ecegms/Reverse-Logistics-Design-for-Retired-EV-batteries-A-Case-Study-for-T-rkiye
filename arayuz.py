@@ -50,8 +50,9 @@ with st.sidebar:
     st.header("⚙️ Veri & Sistem Yönetimi")
     st.markdown("<p style='font-size:12px; color:#94a3b8;'>Model girdilerini ve optimizasyon çıktı dosyalarını buradan yönetin.</p>", unsafe_allow_html=True)
     
+    # 1. GÜNCELLEME: Dosya adı "Model_Sonuclari.xlsx" olarak düzeltildi.
     dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", r"seminerveriler_son.xlsx")
-    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari_ilk.xlsx")
+    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari.xlsx")
     
     # Veri Sağlığı / Durum Göstergesi
     st.markdown("---")
@@ -158,6 +159,7 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
             st.markdown("<p style='font-size:12px; color:#94a3b8;'>🔵 Mavi: Toplama Merkezleri | 🔴 Kırmızı: İşleme Merkezleri | 🟢 Yeşil: 2. Ömür / Bertaraf</p>", unsafe_allow_html=True)
             
             m = folium.Map(location=[39.0, 35.0], zoom_start=6) 
+            # 2. GÜNCELLEME: Tüm Pareto sonuçlarının (aday_toplama) haritaya çizilmesi sağlandı
             for idx, row in aday_toplama.iterrows():
                 folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m)
             for il in isleme_aday_illeri:
@@ -276,6 +278,7 @@ if st.session_state.model_calisti:
         
         m_sonuc = folium.Map(location=[39.0, 35.0], zoom_start=6) 
         
+        # 2. GÜNCELLEME: Tüm Pareto sonuçlarının (aday_toplama) haritaya çizilmesi sağlandı
         for idx, row in aday_toplama.iterrows():
             folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m_sonuc)
         for il in isleme_aday_illeri:
