@@ -51,8 +51,8 @@ with st.sidebar:
     st.markdown("<p style='font-size:12px; color:#94a3b8;'>Model girdilerini ve optimizasyon çıktı dosyalarını buradan yönetin.</p>", unsafe_allow_html=True)
     
     # KESİN ÇÖZÜM: DOSYA YOLLARI MASAÜSTÜNE SABİTLENDİ
-    dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", r"C:\Users\Ece\OneDrive\Ekler\Masaüstü\bitirme\seminerveriler_son.xlsx")
-    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"C:\Users\Ece\OneDrive\Ekler\Masaüstü\bitirme\Model_Sonuclari.xlsx")
+    dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", "C:/Users/Ece/OneDrive/Ekler/Masaüstü/bitirme/seminerveriler_son.xlsx")
+    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", "C:/Users/Ece/OneDrive/Ekler/Masaüstü/bitirme/Model_Sonuclari.xlsx")
     
     st.markdown("---")
     st.subheader("📊 Sistem Durumu")
