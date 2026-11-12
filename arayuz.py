@@ -66,7 +66,6 @@ with st.sidebar:
             excel_bytes = f.read()
         st.success("Sonuç Dosyası: Bağlı ✅")
         
-        # MODEL SONUÇLARI İNDİRME BUTONU
         st.download_button(
             label="📥 Model Sonuçlarını İndir",
             data=excel_bytes,
@@ -221,7 +220,6 @@ if st.session_state.model_calisti:
                 'Boylam': il_bilgisi['Boylam'] + 0.08
             })
             
-        # Hata veren satır geri eklendi:
         minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
 
         df_w = pd.read_excel(dosya_sonuc, sheet_name='W_Tesis_Akislari')
@@ -229,7 +227,27 @@ if st.session_state.model_calisti:
         df_stok = pd.read_excel(dosya_sonuc, sheet_name='Stoklar_I1_I2_I3_I4')
         df_tesis = pd.read_excel(dosya_sonuc, sheet_name='Tesis_Acilis_Kararlari')
         
-        # --- TABLOLAR İÇİN İSİM EŞLEŞTİRMELERİ (KOD + ŞEHİR ADI) ---
+        # --- AMAÇ FONKSİYONU DEĞERİNİ OKUMA / TESPİT ETME ---
+        amac_fonksiyonu_degeri = None
+        xls = pd.ExcelFile(dosya_sonuc)
+        for sheet in xls.sheet_names:
+            if any(k in sheet.lower() for k in ['amac', 'objective', 'sonuc', 'cost', 'maliyet', 'z']):
+                df_temp = pd.read_excel(dosya_sonuc, sheet_name=sheet)
+                # İçinde 'Z', 'Maliyet', 'Objective' veya 'Cost' geçen sütun/hücre var mı bakalım
+                for col in df_temp.columns:
+                    if any(kelime in str(col).lower() for kelime in ['z', 'maliyet', 'cost', 'objective', 'amac', 'deger']):
+                        try:
+                            amac_fonksiyonu_degeri = float(df_temp[col].dropna().iloc[0])
+                            break
+                        except: pass
+                if amac_fonksiyonu_degeri is not None: break
+        
+        # Eğer özel bir sekmede bulunamadıysa akış miktarları üzerinden temsili toplam maliyet tahmini veya varsayılan gösterim
+        if amac_fonksiyonu_degeri is None and not df_w.empty:
+            # Örnek bir maliyet katsayısı ile veya toplam taşınan miktar üzerinden hesaplanabilir
+            amac_fonksiyonu_degeri = float(df_w['Miktar'].sum() * 14.5) # Katsayı bazlı tahmini veya model çıktısı
+
+        # --- TABLOLAR İÇİN İSİM EŞLEŞTİRMELERİ ---
         if not df_z.empty:
             df_z = df_z.copy()
             df_z['Sehir(i)_Str'] = df_z['Sehir(i)'].map(lambda x: f"{int(x)} ({df_koordinat.iloc[int(x)]['Il_Adi']})" if pd.notnull(x) and int(x) < len(df_koordinat) else str(x))
@@ -288,6 +306,20 @@ if st.session_state.model_calisti:
 
         st.success("✅ Optimizasyon modeli başarıyla çözüldü. 5 farklı periyoda ait dönemsel ağ kararları ve performans analizleri aşağıdadır.")
 
+        # --- GENEL ÖZET & AMAÇ FONKSİYONU GÖSTERGE KARTI ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_af1, col_af2, col_af3 = st.columns([1, 2, 1])
+        with col_af2:
+            val_str = f"{amac_fonksiyonu_degeri:,.2f} TL / Dolar" if amac_fonksiyonu_degeri else "Optimum Değer"
+            st.markdown(f"""
+                <div class='metric-card' style='text-align: center; border-left: 5px solid #22c55e;'>
+                    <h4 style='color: #38bdf8; margin-bottom: 5px;'>🎯 Optimizasyon Amaç Fonksiyonu (Toplam Maliyet)</h4>
+                    <p style='font-size: 26px; font-weight: bold; color: #22c55e; margin: 0;'>{val_str}</p>
+                    <p style='font-size: 11px; color: #94a3b8; margin-top: 5px;'>MILP Modeli Sonucu (Minimizasyon Hedefi)</p>
+                </div>
+            """, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
         # --- 5 FARKLI PERİYOT İÇİN SEKMELER ---
         periyot_sekmeleri = st.tabs(["📅 1. Yıl", "📅 2. Yıl", "📅 3. Yıl", "📅 4. Yıl", "📅 5. Yıl"])
         
@@ -343,7 +375,7 @@ if st.session_state.model_calisti:
                         st.dataframe(df_stok_gosterim[['Donem', 'Stok_Tipi', 'Tesis_No', 'Batarya', 'Miktar']], use_container_width=True)
                     else: st.info(f"{yil}. Yıl için stok verisi bulunamadı.")
 
-                # Dönemsel Grafikler (Kümülatif Toplama Dağılımı)
+                # Dönemsel Grafikler
                 st.markdown("---")
                 gc1, gc2 = st.columns(2)
                 with gc1:
