@@ -50,9 +50,8 @@ with st.sidebar:
     st.header("⚙️ Veri & Sistem Yönetimi")
     st.markdown("<p style='font-size:12px; color:#94a3b8;'>Model girdilerini ve optimizasyon çıktı dosyalarını buradan yönetin.</p>", unsafe_allow_html=True)
     
-    # KESİN ÇÖZÜM: DOSYA YOLLARI MASAÜSTÜNE SABİTLENDİ
-    dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", r"C:\Users\Ece\OneDrive\Ekler\Masaüstü\bitirme\seminerveriler_son.xlsx")
-    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"C:\Users\Ece\OneDrive\Ekler\Masaüstü\bitirme\Model_Sonuclari.xlsx")
+    dosya_girdi = st.text_input("Girdi Verileri (.xlsx):", r"seminerveriler_son.xlsx")
+    dosya_sonuc = st.text_input("Model Sonuçları (.xlsx):", r"Model_Sonuclari.xlsx")
     
     st.markdown("---")
     st.subheader("📊 Sistem Durumu")
@@ -222,6 +221,7 @@ if st.session_state.model_calisti:
                 'Boylam': il_bilgisi['Boylam'] + 0.08
             })
             
+        # Hata veren satır geri eklendi:
         minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
 
         df_w = pd.read_excel(dosya_sonuc, sheet_name='W_Tesis_Akislari')
@@ -288,33 +288,6 @@ if st.session_state.model_calisti:
 
         st.success("✅ Optimizasyon modeli başarıyla çözüldü. 5 farklı periyoda ait dönemsel ağ kararları ve performans analizleri aşağıdadır.")
 
-        # --- GÜNCELLENEN FİNANSAL ÖZET KARTI (KESİN ÇÖZÜM) ---
-        try:
-            # Excel'den okurken sütun adlarını önemsemeden sırasıyla (0., 1. ve 2. indeksler) çekiyoruz:
-            df_finans = pd.read_excel(dosya_sonuc, sheet_name='Finansal_Ozet')
-            toplam_kar = float(df_finans.iloc[0, 0])      # 1. sütundaki değer
-            toplam_gelir = float(df_finans.iloc[0, 1])    # 2. sütundaki değer
-            toplam_maliyet = float(df_finans.iloc[0, 2])  # 3. sütundaki değer
-            
-        except Exception as e:
-            toplam_kar = 0.0
-            toplam_gelir = 0.0
-            toplam_maliyet = 0.0
-            st.warning(f"⚠️ 'Finansal_Ozet' okunamadı. Değerler 0 gösterilmektedir. (Hata detayı: {e})")
-
-        # Pozitif/negatif renklendirmeyi sağlayan basit bir dinamik stil:
-        kar_rengi = "#ef4444" if toplam_kar < 0 else "#10b981"
-        
-        st.markdown(f"""
-        <div style="text-align: center; padding: 15px; background-color: #1e293b; border-radius: 10px; border-left: 5px solid {kar_rengi}; margin-bottom: 25px;">
-            <h3 style="color: {kar_rengi}; margin-bottom: 5px; margin-top: 0;">Maksimum Kar (Amaç Fonksiyonu Z): ${toplam_kar:,.2f}</h3>
-            <p style="color: #94a3b8; font-size: 13px; margin: 0;">
-                📈 Toplam Beklenen Gelir: <b>${toplam_gelir:,.2f}</b> &nbsp; | &nbsp; 📉 Toplam Sistem Maliyeti: <b>${toplam_maliyet:,.2f}</b>
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-        # ----------------------------------------
-
         # --- 5 FARKLI PERİYOT İÇİN SEKMELER ---
         periyot_sekmeleri = st.tabs(["📅 1. Yıl", "📅 2. Yıl", "📅 3. Yıl", "📅 4. Yıl", "📅 5. Yıl"])
         
@@ -370,7 +343,7 @@ if st.session_state.model_calisti:
                         st.dataframe(df_stok_gosterim[['Donem', 'Stok_Tipi', 'Tesis_No', 'Batarya', 'Miktar']], use_container_width=True)
                     else: st.info(f"{yil}. Yıl için stok verisi bulunamadı.")
 
-                # Dönemsel Grafikler
+                # Dönemsel Grafikler (Kümülatif Toplama Dağılımı)
                 st.markdown("---")
                 gc1, gc2 = st.columns(2)
                 with gc1:
