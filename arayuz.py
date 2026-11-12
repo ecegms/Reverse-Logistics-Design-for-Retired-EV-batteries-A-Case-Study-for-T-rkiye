@@ -143,8 +143,6 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
                 'Boylam': il_bilgisi['Boylam'] + 0.08
             })
             
-        minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
-            
         c1, c2 = st.columns([1, 1.8])
         with c1:
             st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
@@ -174,13 +172,11 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
                 folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m)
             for il in isleme_aday_illeri:
                 folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="red", icon="industry", prefix='fa'), tooltip=f"İşleme Merkezi: {il['Il_Adi']}").add_to(m)
-            for il in minimax_adaylari:
-                folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="green", icon="recycle", prefix='fa'), tooltip=f"2. Ömür / Geri Dönüşüm: {il['Il_Adi']}").add_to(m)
             
             st_folium(m, width=800, height=450)
             st.markdown("</div>", unsafe_allow_html=True)
             
-    except Exception as e: st.error(f"Veri Okuma Hatası: {e}")
+    except Exception as e: st.error(f"Hata: {e}")
 
 # =====================================================
 # ADIM 2: OPTİMİZASYON SONUÇLARI VE 5 FARKLI PERİYOT SEKMESİ
@@ -220,19 +216,56 @@ if st.session_state.model_calisti:
                 'Enlem': il_bilgisi['Enlem'] - 0.08, 
                 'Boylam': il_bilgisi['Boylam'] + 0.08
             })
-            
-        minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
 
         df_w = pd.read_excel(dosya_sonuc, sheet_name='W_Tesis_Akislari')
         df_z = pd.read_excel(dosya_sonuc, sheet_name='Z_Sehir_Toplama')
         df_stok = pd.read_excel(dosya_sonuc, sheet_name='Stoklar_I1_I2_I3_I4')
         df_tesis = pd.read_excel(dosya_sonuc, sheet_name='Tesis_Acilis_Kararlari')
         
-        # Z_Sehir_Toplama tablosunda kodların yanına şehir adlarının eklenmesi (Örn: 0 (Bursa))
+        # --- TABLOLAR İÇİN İSİM EŞLEŞTİRMELERİ (KOD + ŞEHİR ADI) ---
         if not df_z.empty:
             df_z = df_z.copy()
             df_z['Sehir(i)_Str'] = df_z['Sehir(i)'].map(lambda x: f"{int(x)} ({df_koordinat.iloc[int(x)]['Il_Adi']})" if pd.notnull(x) and int(x) < len(df_koordinat) else str(x))
             df_z['Toplama(j)_Str'] = df_z['Toplama(j)'].map(lambda x: f"{int(x)} ({aday_toplama.iloc[int(x)]['Il_Adi']})" if pd.notnull(x) and int(x) < len(aday_toplama) else str(x))
+
+        if not df_w.empty:
+            df_w = df_w.copy()
+            def map_cikis(val):
+                try:
+                    v = int(val)
+                    if v < len(isleme_aday_illeri): return f"{v} ({isleme_aday_illeri[v]['Il_Adi']})"
+                except: pass
+                return str(val)
+            def map_varis(val):
+                try:
+                    v = int(val)
+                    if v < len(isleme_aday_illeri): return f"{v} ({isleme_aday_illeri[v]['Il_Adi']})"
+                except: pass
+                return str(val)
+            df_w['Cikis_Str'] = df_w['Cikis'].apply(map_cikis)
+            df_w['Varis_Str'] = df_w['Varis'].apply(map_varis)
+
+        if not df_tesis.empty:
+            df_tesis = df_tesis.copy()
+            def map_tesis_no(val):
+                try:
+                    v = int(val)
+                    if v < len(isleme_aday_illeri): return f"{v} ({isleme_aday_illeri[v]['Il_Adi']})"
+                    elif v < len(aday_toplama): return f"{v} ({aday_toplama.iloc[v]['Il_Adi']})"
+                except: pass
+                return str(val)
+            df_tesis['Tesis_No_Str'] = df_tesis['Tesis_No'].apply(map_tesis_no)
+
+        if not df_stok.empty:
+            df_stok = df_stok.copy()
+            def map_stok_tesis(val):
+                try:
+                    v = int(val)
+                    if v < len(isleme_aday_illeri): return f"{v} ({isleme_aday_illeri[v]['Il_Adi']})"
+                    elif v < len(aday_toplama): return f"{v} ({aday_toplama.iloc[v]['Il_Adi']})"
+                except: pass
+                return str(val)
+            df_stok['Tesis_No_Str'] = df_stok['Tesis_No'].apply(map_stok_tesis)
 
         def hesapla_kg(row):
             b_tipi = int(row.get('Batarya', 1))
@@ -275,7 +308,10 @@ if st.session_state.model_calisti:
                 t1, t2, t3, t4 = st.tabs([f"🏭 {yil}. Yıl Açılan Tesisler", f"📦 {yil}. Yıl Şehir Toplamaları (Z)", f"🔄 {yil}. Yıl Akışlar (W)", f"📊 {yil}. Yıl Stoklar"])
                 
                 with t1:
-                    if not df_tesis_p.empty: st.dataframe(df_tesis_p, use_container_width=True)
+                    if not df_tesis_p.empty:
+                        df_tesis_gosterim = df_tesis_p.copy()
+                        df_tesis_gosterim['Tesis_No'] = df_tesis_gosterim['Tesis_No_Str']
+                        st.dataframe(df_tesis_gosterim[['Donem', 'Tesis_Tipi', 'Tesis_No']], use_container_width=True)
                     else: st.info(f"{yil}. Yıl için aktif tesis yatırım kaydı bulunamadı.")
                 with t2:
                     if not df_z_p.empty:
@@ -286,10 +322,18 @@ if st.session_state.model_calisti:
                     else: 
                         st.info(f"{yil}. Yıl için şehir toplama verisi bulunamadı.")
                 with t3:
-                    if not df_w_p.empty: st.dataframe(df_w_p, use_container_width=True)
+                    if not df_w_p.empty:
+                        df_w_gosterim = df_w_p.copy()
+                        df_w_gosterim['Cikis'] = df_w_gosterim['Cikis_Str']
+                        df_w_gosterim['Varis'] = df_w_gosterim['Varis_Str']
+                        cols_to_show = [c for c in ['Donem', 'Akis_Tipi', 'Cikis', 'Varis', 'Batarya', 'Miktar', 'Miktar_kg'] if c in df_w_gosterim.columns]
+                        st.dataframe(df_w_gosterim[cols_to_show], use_container_width=True)
                     else: st.info(f"{yil}. Yıl için akış verisi bulunamadı.")
                 with t4:
-                    if not df_stok_p.empty: st.dataframe(df_stok_p, use_container_width=True)
+                    if not df_stok_p.empty:
+                        df_stok_gosterim = df_stok_p.copy()
+                        df_stok_gosterim['Tesis_No'] = df_stok_gosterim['Tesis_No_Str']
+                        st.dataframe(df_stok_gosterim[['Donem', 'Stok_Tipi', 'Tesis_No', 'Batarya', 'Miktar']], use_container_width=True)
                     else: st.info(f"{yil}. Yıl için stok verisi bulunamadı.")
 
                 # Dönemsel Grafikler (Kümülatif Toplama Dağılımı eklendi)
