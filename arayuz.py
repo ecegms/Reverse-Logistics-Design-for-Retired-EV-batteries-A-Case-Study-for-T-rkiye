@@ -66,7 +66,7 @@ with st.sidebar:
             excel_bytes = f.read()
         st.success("Sonuç Dosyası: Bağlı ✅")
         
-        # MODEL SONUÇLARI İNDİRME BUTONU EKLENDİ
+        # MODEL SONUÇLARI İNDİRME BUTONU
         st.download_button(
             label="📥 Model Sonuçlarını İndir",
             data=excel_bytes,
@@ -143,6 +143,8 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
                 'Boylam': il_bilgisi['Boylam'] + 0.08
             })
             
+        minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
+            
         c1, c2 = st.columns([1, 1.8])
         with c1:
             st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
@@ -172,11 +174,13 @@ if st.session_state.hesaplandi and not st.session_state.model_calisti:
                 folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m)
             for il in isleme_aday_illeri:
                 folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="red", icon="industry", prefix='fa'), tooltip=f"İşleme Merkezi: {il['Il_Adi']}").add_to(m)
+            for il in minimax_adaylari:
+                folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="green", icon="recycle", prefix='fa'), tooltip=f"2. Ömür / Geri Dönüşüm: {il['Il_Adi']}").add_to(m)
             
             st_folium(m, width=800, height=450)
             st.markdown("</div>", unsafe_allow_html=True)
             
-    except Exception as e: st.error(f"Hata: {e}")
+    except Exception as e: st.error(f"Veri Okuma Hatası: {e}")
 
 # =====================================================
 # ADIM 2: OPTİMİZASYON SONUÇLARI VE 5 FARKLI PERİYOT SEKMESİ
@@ -216,6 +220,9 @@ if st.session_state.model_calisti:
                 'Enlem': il_bilgisi['Enlem'] - 0.08, 
                 'Boylam': il_bilgisi['Boylam'] + 0.08
             })
+            
+        # Hata veren satır geri eklendi:
+        minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
 
         df_w = pd.read_excel(dosya_sonuc, sheet_name='W_Tesis_Akislari')
         df_z = pd.read_excel(dosya_sonuc, sheet_name='Z_Sehir_Toplama')
@@ -336,7 +343,7 @@ if st.session_state.model_calisti:
                         st.dataframe(df_stok_gosterim[['Donem', 'Stok_Tipi', 'Tesis_No', 'Batarya', 'Miktar']], use_container_width=True)
                     else: st.info(f"{yil}. Yıl için stok verisi bulunamadı.")
 
-                # Dönemsel Grafikler (Kümülatif Toplama Dağılımı eklendi)
+                # Dönemsel Grafikler (Kümülatif Toplama Dağılımı)
                 st.markdown("---")
                 gc1, gc2 = st.columns(2)
                 with gc1:
