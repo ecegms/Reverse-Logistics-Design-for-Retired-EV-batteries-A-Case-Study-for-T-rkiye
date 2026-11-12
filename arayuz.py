@@ -228,6 +228,12 @@ if st.session_state.model_calisti:
         df_stok = pd.read_excel(dosya_sonuc, sheet_name='Stoklar_I1_I2_I3_I4')
         df_tesis = pd.read_excel(dosya_sonuc, sheet_name='Tesis_Acilis_Kararlari')
         
+        # Z_Sehir_Toplama tablosunda kodların yanına şehir adlarının eklenmesi (Örn: 0 (Bursa))
+        if not df_z.empty:
+            df_z = df_z.copy()
+            df_z['Sehir(i)_Str'] = df_z['Sehir(i)'].map(lambda x: f"{int(x)} ({df_koordinat.iloc[int(x)]['Il_Adi']})" if pd.notnull(x) and int(x) < len(df_koordinat) else str(x))
+            df_z['Toplama(j)_Str'] = df_z['Toplama(j)'].map(lambda x: f"{int(x)} ({aday_toplama.iloc[int(x)]['Il_Adi']})" if pd.notnull(x) and int(x) < len(aday_toplama) else str(x))
+
         def hesapla_kg(row):
             b_tipi = int(row.get('Batarya', 1))
             akis = str(row['Akis_Tipi'])
@@ -272,8 +278,13 @@ if st.session_state.model_calisti:
                     if not df_tesis_p.empty: st.dataframe(df_tesis_p, use_container_width=True)
                     else: st.info(f"{yil}. Yıl için aktif tesis yatırım kaydı bulunamadı.")
                 with t2:
-                    if not df_z_p.empty: st.dataframe(df_z_p, use_container_width=True)
-                    else: st.info(f"{yil}. Yıl için şehir toplama verisi bulunamadı.")
+                    if not df_z_p.empty:
+                        df_z_gosterim = df_z_p.copy()
+                        df_z_gosterim['Sehir(i)'] = df_z_gosterim['Sehir(i)_Str']
+                        df_z_gosterim['Toplama(j)'] = df_z_gosterim['Toplama(j)_Str']
+                        st.dataframe(df_z_gosterim[['Donem', 'Sehir(i)', 'Toplama(j)', 'Batarya(b)', 'Miktar']], use_container_width=True)
+                    else: 
+                        st.info(f"{yil}. Yıl için şehir toplama verisi bulunamadı.")
                 with t3:
                     if not df_w_p.empty: st.dataframe(df_w_p, use_container_width=True)
                     else: st.info(f"{yil}. Yıl için akış verisi bulunamadı.")
@@ -288,7 +299,7 @@ if st.session_state.model_calisti:
                     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
                     if not df_z.empty and 'Donem' in df_z.columns:
                         df_z_kumulatif = df_z[df_z['Donem'] <= yil].groupby('Toplama(j)')['Miktar'].sum().reset_index()
-                        df_z_kumulatif['Il_Adi'] = df_z_kumulatif['Toplama(j)'].map(lambda idx: aday_toplama.iloc[int(idx)]['Il_Adi'] if int(idx) < len(aday_toplama) else f"Merkez {idx}")
+                        df_z_kumulatif['Il_Adi'] = df_z_kumulatif['Toplama(j)'].map(lambda idx: f"{int(idx)} ({aday_toplama.iloc[int(idx)]['Il_Adi']})" if int(idx) < len(aday_toplama) else f"Merkez {idx}")
                         
                         fig_p1 = px.bar(df_z_kumulatif, x='Il_Adi', y='Miktar', title=f"1. Yıl - {yil}. Yıl Kümülatif İl Bazlı Toplama Dağılımı", color_discrete_sequence=['#38bdf8'])
                         fig_p1.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white')
@@ -316,7 +327,7 @@ if st.session_state.model_calisti:
         m_sonuc = folium.Map(location=[39.0, 35.0], zoom_start=6) 
         
         for idx, row in aday_toplama.iterrows():
-            folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {row['Il_Adi']}").add_to(m_sonuc)
+            folium.Marker(location=[row['Enlem'], row['Boylam']], icon=folium.Icon(color="blue", icon="building", prefix='fa'), tooltip=f"Toplama Merkezi: {idx} ({row['Il_Adi']})").add_to(m_sonuc)
         for il in isleme_aday_illeri:
             folium.Marker(location=[il['Enlem'], il['Boylam']], icon=folium.Icon(color="red", icon="industry", prefix='fa'), tooltip=f"İşleme Merkezi: {il['Il_Adi']}").add_to(m_sonuc)
         for il in minimax_adaylari:
