@@ -221,7 +221,6 @@ if st.session_state.model_calisti:
                 'Boylam': il_bilgisi['Boylam'] + 0.08
             })
             
-        # Hata veren satır geri eklendi:
         minimax_adaylari = [{'Il_Adi': il['Il_Adi'], 'Enlem': il['Enlem'] + 0.15, 'Boylam': il['Boylam'] + 0.15} for il in isleme_aday_illeri]
 
         df_w = pd.read_excel(dosya_sonuc, sheet_name='W_Tesis_Akislari')
@@ -288,6 +287,28 @@ if st.session_state.model_calisti:
 
         st.success("✅ Optimizasyon modeli başarıyla çözüldü. 5 farklı periyoda ait dönemsel ağ kararları ve performans analizleri aşağıdadır.")
 
+        # --- YENİ EKLENEN: FİNANSAL ÖZET KARTI ---
+        try:
+            df_finans = pd.read_excel(dosya_sonuc, sheet_name='Finansal_Ozet')
+            toplam_kar = df_finans['Toplam_Kar'].iloc[0]
+            toplam_gelir = df_finans['Toplam_Gelir'].iloc[0]
+            toplam_maliyet = df_finans['Toplam_Maliyet'].iloc[0]
+        except:
+            toplam_kar = 0
+            toplam_gelir = 0
+            toplam_maliyet = 0
+            st.warning("⚠️ Model_Sonuclari.xlsx dosyasında 'Finansal_Ozet' sayfası bulunamadı. Değerler 0 gösterilmektedir.")
+
+        st.markdown(f"""
+        <div style="text-align: center; padding: 15px; background-color: #1e293b; border-radius: 10px; border-left: 5px solid #10b981; margin-bottom: 25px;">
+            <h3 style="color: #10b981; margin-bottom: 5px; margin-top: 0;">Maksimum Kar (Amaç Fonksiyonu Z): ${toplam_kar:,.2f}</h3>
+            <p style="color: #94a3b8; font-size: 13px; margin: 0;">
+                📈 Toplam Beklenen Gelir: <b>${toplam_gelir:,.2f}</b> &nbsp; | &nbsp; 📉 Toplam Sistem Maliyeti: <b>${toplam_maliyet:,.2f}</b>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        # ----------------------------------------
+
         # --- 5 FARKLI PERİYOT İÇİN SEKMELER ---
         periyot_sekmeleri = st.tabs(["📅 1. Yıl", "📅 2. Yıl", "📅 3. Yıl", "📅 4. Yıl", "📅 5. Yıl"])
         
@@ -343,7 +364,7 @@ if st.session_state.model_calisti:
                         st.dataframe(df_stok_gosterim[['Donem', 'Stok_Tipi', 'Tesis_No', 'Batarya', 'Miktar']], use_container_width=True)
                     else: st.info(f"{yil}. Yıl için stok verisi bulunamadı.")
 
-                # Dönemsel Grafikler (Kümülatif Toplama Dağılımı)
+                # Dönemsel Grafikler
                 st.markdown("---")
                 gc1, gc2 = st.columns(2)
                 with gc1:
