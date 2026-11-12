@@ -287,21 +287,26 @@ if st.session_state.model_calisti:
 
         st.success("✅ Optimizasyon modeli başarıyla çözüldü. 5 farklı periyoda ait dönemsel ağ kararları ve performans analizleri aşağıdadır.")
 
-        # --- YENİ EKLENEN: FİNANSAL ÖZET KARTI ---
+        # --- GÜNCELLENEN FİNANSAL ÖZET KARTI (KESİN ÇÖZÜM) ---
         try:
+            # Excel'den okurken sütun adlarını önemsemeden sırasıyla (0., 1. ve 2. indeksler) çekiyoruz:
             df_finans = pd.read_excel(dosya_sonuc, sheet_name='Finansal_Ozet')
-            toplam_kar = df_finans['Toplam_Kar'].iloc[0]
-            toplam_gelir = df_finans['Toplam_Gelir'].iloc[0]
-            toplam_maliyet = df_finans['Toplam_Maliyet'].iloc[0]
-        except:
-            toplam_kar = 0
-            toplam_gelir = 0
-            toplam_maliyet = 0
-            st.warning("⚠️ Model_Sonuclari.xlsx dosyasında 'Finansal_Ozet' sayfası bulunamadı. Değerler 0 gösterilmektedir.")
+            toplam_kar = float(df_finans.iloc[0, 0])      # 1. sütundaki değer
+            toplam_gelir = float(df_finans.iloc[0, 1])    # 2. sütundaki değer
+            toplam_maliyet = float(df_finans.iloc[0, 2])  # 3. sütundaki değer
+            
+        except Exception as e:
+            toplam_kar = 0.0
+            toplam_gelir = 0.0
+            toplam_maliyet = 0.0
+            st.warning(f"⚠️ 'Finansal_Ozet' okunamadı. Değerler 0 gösterilmektedir. (Hata detayı: {e})")
 
+        # Pozitif/negatif renklendirmeyi sağlayan basit bir dinamik stil:
+        kar_rengi = "#ef4444" if toplam_kar < 0 else "#10b981"
+        
         st.markdown(f"""
-        <div style="text-align: center; padding: 15px; background-color: #1e293b; border-radius: 10px; border-left: 5px solid #10b981; margin-bottom: 25px;">
-            <h3 style="color: #10b981; margin-bottom: 5px; margin-top: 0;">Maksimum Kar (Amaç Fonksiyonu Z): ${toplam_kar:,.2f}</h3>
+        <div style="text-align: center; padding: 15px; background-color: #1e293b; border-radius: 10px; border-left: 5px solid {kar_rengi}; margin-bottom: 25px;">
+            <h3 style="color: {kar_rengi}; margin-bottom: 5px; margin-top: 0;">Maksimum Kar (Amaç Fonksiyonu Z): ${toplam_kar:,.2f}</h3>
             <p style="color: #94a3b8; font-size: 13px; margin: 0;">
                 📈 Toplam Beklenen Gelir: <b>${toplam_gelir:,.2f}</b> &nbsp; | &nbsp; 📉 Toplam Sistem Maliyeti: <b>${toplam_maliyet:,.2f}</b>
             </p>
