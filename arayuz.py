@@ -143,3 +143,125 @@ def show_dashboard():
         st.button("Güvenli Çıkış Yap", on_click=lambda: st.session_state.update({'logged_in': False, 'current_view': 'login'}), use_container_width=True)
 
 # Geri kalan Modül 1 ve Modül 2 fonksiyonları önceki kodla aynı kalabilir...
+# ==========================================
+# 4. MODÜL 1: ADAY MERKEZ BELİRLEME
+# ==========================================
+def show_module1():
+    st.header("Modül 1: Aday Toplama Merkezi Belirleme Aşamaları")
+    
+    col_back, col_reset = st.columns([8, 2])
+    col_back.button("⬅ Kontrol Paneline Dön", on_click=go_to_dashboard)
+    col_reset.button("🔄 Hafızayı Sıfırla", on_click=reset_system)
+    
+    st.divider()
+
+    # ADIM 0: Veri Yükleme
+    if st.session_state.mod1_step >= 0:
+        st.subheader("Adım 1: İl Bazlı EV Verisi Yükleme")
+        uploaded_file = st.file_uploader("İllere göre elektrikli araç sayılarını içeren Excel dosyasını yükleyin", type=['xlsx', 'xls'])
+        
+        if uploaded_file is not None and st.session_state.mod1_data is None:
+            # Gerçekte pd.read_excel(uploaded_file) yapacaksın
+            st.session_state.mod1_data = "Veri Yüklendi" 
+            st.success("Dosya başarıyla sisteme aktarıldı.")
+            
+        if st.session_state.mod1_data is not None:
+            if st.button("Pareto Analizini Başlat"):
+                st.session_state.mod1_step = 1
+                st.rerun()
+
+    st.divider()
+
+    # ADIM 1: Pareto Analizi
+    if st.session_state.mod1_step >= 1:
+        st.subheader("Adım 2: Pareto Analizi (%80 Talep Karşılama)")
+        with st.spinner("Pareto uygulanıyor..."):
+            time.sleep(1) # Simülasyon
+        st.info("Pareto analizi tamamlandı. Toplam talebin %80'ini oluşturan iller haritada işaretlendi.")
+        # Buraya folium veya st.map haritasını koyacaksın
+        st.write("[ HARİTA / GRAFİK BURAYA GELECEK ]")
+        
+        if st.button("K-Means Kümeleme Algoritmasını Çalıştır"):
+            st.session_state.mod1_step = 2
+            st.rerun()
+
+    st.divider()
+
+    # ADIM 2: K-Means
+    if st.session_state.mod1_step >= 2:
+        st.subheader("Adım 3: K-Means ile Merkez Seçimi")
+        st.info("K-Means uygulandı. Küme merkezleri belirlendi.")
+        st.write("[ K-MEANS SONUÇ HARİTASI BURAYA GELECEK ]")
+        
+        if st.button("Minimax Algoritmasını Çalıştır"):
+            st.session_state.mod1_step = 3
+            st.rerun()
+
+    st.divider()
+    
+    # ADIM 3: Minimax ve Nihai Sonuç
+    if st.session_state.mod1_step >= 3:
+        st.subheader("Adım 4: Minimax ve Nihai Aday Merkezler")
+        st.success("Tüm adımlar tamamlandı. Nihai aday tesis konumları belirlendi.")
+        st.write("[ NİHAİ MERKEZLER TABLOSU VE HARİTASI BURAYA GELECEK ]")
+        st.write("Artık Modül 2'ye geçerek optimizasyon modelini çalıştırabilirsiniz.")
+
+# ==========================================
+# 5. MODÜL 2: OPTİMİZASYON VE SENARYO ANALİZİ
+# ==========================================
+def show_module2():
+    st.header("Modül 2: Matematiksel Model (MILP) ve Senaryo Analizi")
+    
+    col_back, col_reset = st.columns([8, 2])
+    col_back.button("⬅ Kontrol Paneline Dön", on_click=go_to_dashboard)
+    col_reset.button("🔄 Hafızayı Sıfırla", on_click=reset_system)
+    
+    st.divider()
+    
+    col_params, col_results = st.columns([1, 2])
+    
+    with col_params:
+        st.subheader("Senaryo Parametreleri")
+        st.write("Modeli çalıştırmadan önce parametreleri ayarlayabilirsiniz.")
+        
+        # Senaryo analizi için parametre girişleri
+        kapasite_tasima = st.number_input("Tır Taşıma Kapasitesi (Adet)", value=50, step=5)
+        maliyet_km = st.number_input("Birim Nakliye Maliyeti (TL/km)", value=25.0, step=1.0)
+        geri_kazanim_orani = st.slider("Geri Kazanım Başarı Oranı (%)", min_value=50, max_value=100, value=85)
+        
+        st.write("")
+        if st.button("🚀 Modeli Çöz (Gurobi Arka Planda Çalışır)", type="primary", use_container_width=True):
+            st.session_state.model_solved = True
+            with st.spinner("Model çözülüyor, lütfen bekleyiniz..."):
+                time.sleep(2) # Gurobi çözümü simülasyonu
+            st.rerun()
+
+    with col_results:
+        st.subheader("Optimizasyon Sonuçları")
+        if st.session_state.get('model_solved', False):
+            st.success("Model Optimal Çözüme Ulaştı!")
+            st.metric(label="Toplam Ağ Maliyeti", value="₺ 4,250,000", delta="-₺ 150,000 (Bir önceki senaryoya göre)")
+            
+            # Sonuçları sekmelerle göstermek çok profesyonel durur
+            tab1, tab2, tab3 = st.tabs(["Tesis Açılış Kararları", "Akış Miktarları", "Finansal Özet"])
+            with tab1:
+                st.write("Hangi ile geri dönüşüm tesisi açılacak tablosu...")
+            with tab2:
+                st.write("Toplama merkezinden tesislere giden akış rotaları...")
+            with tab3:
+                st.write("Taşıma, kurulum ve operasyon maliyetleri kırılımı...")
+        else:
+            st.info("Lütfen sol taraftan parametreleri ayarlayıp modeli çalıştırın.")
+
+# ==========================================
+# ANA KONTROL MEKANİZMASI
+# ==========================================
+if not st.session_state.logged_in:
+    show_login()
+else:
+    if st.session_state.current_view == 'dashboard':
+        show_dashboard()
+    elif st.session_state.current_view == 'module1':
+        show_module1()
+    elif st.session_state.current_view == 'module2':
+        show_module2()
