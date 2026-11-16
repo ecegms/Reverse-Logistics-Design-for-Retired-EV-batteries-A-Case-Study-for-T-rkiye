@@ -18,7 +18,7 @@ custom_css = """
 button[data-testid="baseButton-primary"] {
     height: 400px !important; 
     width: 100% !important;
-    background-color: #2F70AF !important; 
+    background-color: #2F70AF !important; /* Paletteki Orta Mavi */
     color: #ffffff !important; 
     border-radius: 15px !important;
     border: none !important;
@@ -34,7 +34,7 @@ button[data-testid="baseButton-primary"] {
 button[data-testid="baseButton-primary"]:hover {
     transform: translateY(-8px) !important;
     box-shadow: 0 15px 30px rgba(47, 112, 175, 0.4) !important;
-    background-color: #1A3E62 !important; 
+    background-color: #1A3E62 !important; /* Paletteki Koyu Lacivert/Mavi */
     border: none !important;
 }
 
@@ -239,7 +239,7 @@ def show_module1():
             st.session_state.mod1_step = 2
             st.rerun()
 
-    # ADIM 3: DİRSEK METODU DESTEKLİ GERÇEK K-MEANS 
+    # ADIM 3: DİRSEK METODU DESTEKLİ GERÇEK K-MEANS VE TABLO
     if st.session_state.mod1_step >= 2:
         st.divider()
         st.subheader("Adım 3: Dirsek Metodu (Elbow Method) ve K-Means Kümeleme")
@@ -266,14 +266,13 @@ def show_module1():
                 kmeans.fit(X)
                 wcss.append(kmeans.inertia_)
                 
-            # HATA ÇÖZÜMÜ: np.cross yerine güvenli cebirsel uzaklık formülü
+            # CEBİRSEL UZAKLIK FORMÜLÜ (HATA VERMEYEN KESİN ÇÖZÜM)
             x1, y1 = k_degerleri[0], wcss[0]
             x2, y2 = k_degerleri[-1], wcss[-1]
             uzakliklar = []
             
             for i in range(len(k_degerleri)):
                 x0, y0 = k_degerleri[i], wcss[i]
-                # Noktanın doğruya dik uzaklığı formülü
                 pay = abs((y2 - y1)*x0 - (x2 - x1)*y0 + x2*y1 - y2*x1)
                 payda = np.sqrt((y2 - y1)**2 + (x2 - x1)**2)
                 uzaklik = pay / payda
@@ -312,9 +311,11 @@ def show_module1():
             st.session_state.kmeans_sonuclari = aday_isleme_merkezleri
             st.session_state.kmeans_calisti = True
 
+        # EKRAN ÇIKTILARI (GRAFİK, HARİTA VE SSE TABLOSU)
         if st.session_state.get('kmeans_calisti', False):
             opt_k = st.session_state.optimum_k
             
+            # Üst Kısım: Dirsek Grafiği ve Bilgi Metni
             col_grafik, col_bilgi = st.columns([1.5, 1])
             
             with col_grafik:
@@ -327,31 +328,48 @@ def show_module1():
                 
                 ax.set_title("K-Means Dirsek (Elbow) Grafiği")
                 ax.set_xlabel("Küme Sayısı (k)")
-                ax.set_ylabel("WCSS (Küme İçi Hata)")
+                ax.set_ylabel("SSE (Küme İçi Hata Kareler Toplamı)")
                 ax.grid(True, linestyle='--', alpha=0.6)
                 st.pyplot(fig)
                 
             with col_bilgi:
                 st.success(f"**Optimum Küme Sayısı: {opt_k}**")
-                st.write("Sistem, WCSS değerlerindeki kırılım noktasına (dirsek) olan en uzak mesafeyi hesaplayarak, veri setiniz için açılması gereken en uygun işleme merkezi sayısını otomatik olarak tespit etmiştir.")
+                st.write("Sistem, SSE değerlerindeki kırılım noktasına (dirsek) olan en uzak mesafeyi hesaplayarak, veri setiniz için açılması gereken en uygun işleme merkezi sayısını otomatik olarak tespit etmiştir.")
                 st.info("Aşağıdaki haritada Pareto (Mavi) adayları, tespit edilen bu optimum küme merkezlerine (Kırmızı) göre atanmıştır.")
 
-            m_kmeans = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
+            st.write("<br>", unsafe_allow_html=True)
+
+            # Alt Kısım: Solda Harita, Sağda SSE Tablosu
+            col_map, col_table = st.columns([2.5, 1])
             
-            pareto_df = st.session_state.pareto_sonuclari
-            for index, row in pareto_df.iterrows():
-                il_adi = str(row['İl']).strip().title()
-                if il_adi in IL_KOORDINATLARI:
-                    lat, lon = IL_KOORDINATLARI[il_adi]
-                    tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday Toplama Merkezi<br><b>İl Adı:</b> {il_adi}</div>"
-                    folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_kmeans)
-
-            for merkez in st.session_state.kmeans_sonuclari:
-                tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday İşleme Merkezi<br><b>İl Adı:</b> {merkez['İl']}<br><b>Merkez Kodu:</b> {merkez['Kod']}</div>"
-                folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=tooltip_html, icon=folium.Icon(color="red", icon="cog")).add_to(m_kmeans)
+            with col_map:
+                m_kmeans = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
                 
-            st_folium(m_kmeans, width=900, height=450, key="map_kmeans_real")
+                pareto_df = st.session_state.pareto_sonuclari
+                for index, row in pareto_df.iterrows():
+                    il_adi = str(row['İl']).strip().title()
+                    if il_adi in IL_KOORDINATLARI:
+                        lat, lon = IL_KOORDINATLARI[il_adi]
+                        tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday Toplama Merkezi<br><b>İl Adı:</b> {il_adi}</div>"
+                        folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_kmeans)
 
+                for merkez in st.session_state.kmeans_sonuclari:
+                    tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday İşleme Merkezi<br><b>İl Adı:</b> {merkez['İl']}<br><b>Merkez Kodu:</b> {merkez['Kod']}</div>"
+                    folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=tooltip_html, icon=folium.Icon(color="red", icon="cog")).add_to(m_kmeans)
+                    
+                st_folium(m_kmeans, width=750, height=450, key="map_kmeans_real")
+                
+            with col_table:
+                st.markdown("<h4 style='text-align: center;'>K - SSE Tablosu</h4>", unsafe_allow_html=True)
+                
+                sse_df = pd.DataFrame({
+                    "Küme Sayısı (k)": st.session_state.k_degerleri,
+                    "SSE (Varyasyon)": [f"{val:,.2f}" for val in st.session_state.wcss]
+                })
+                
+                st.dataframe(sse_df, use_container_width=True, hide_index=True)
+
+            st.write("<br>", unsafe_allow_html=True)
             if st.button("Minimax Algoritmasını Çalıştır", type="primary"):
                 st.session_state.mod1_step = 3
                 st.rerun()
@@ -364,7 +382,23 @@ def show_module1():
         
         m_minimax = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
         
-        # Temsili Minimax Çıktıları
+        # 1. KATMAN: Pareto Sonuçları (Mavi)
+        if 'pareto_sonuclari' in st.session_state:
+            pareto_df = st.session_state.pareto_sonuclari
+            for index, row in pareto_df.iterrows():
+                il_adi = str(row['İl']).strip().title()
+                if il_adi in IL_KOORDINATLARI:
+                    lat, lon = IL_KOORDINATLARI[il_adi]
+                    tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday Toplama Merkezi<br><b>İl Adı:</b> {il_adi}</div>"
+                    folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_minimax)
+
+        # 2. KATMAN: K-Means Sonuçları (Kırmızı)
+        if 'kmeans_sonuclari' in st.session_state:
+            for merkez in st.session_state.kmeans_sonuclari:
+                tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday İşleme Merkezi<br><b>İl Adı:</b> {merkez['İl']}</div>"
+                folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=tooltip_html, icon=folium.Icon(color="red", icon="cog")).add_to(m_minimax)
+
+        # 3. KATMAN: Minimax Sonuçları (Yeşil ve Turuncu) - (Temsili, Kendi Kodunla Güncelleyebilirsin)
         geri_donusum_merkezleri = [("Eskişehir", 39.7767, 30.5206, "GDM-26")]
         ikinci_omur_merkezleri = [("Konya", 37.8667, 32.4833, "İÖM-42")]
         
