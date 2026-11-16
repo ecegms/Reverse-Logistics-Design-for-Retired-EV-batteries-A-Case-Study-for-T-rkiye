@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,8 +9,12 @@ import matplotlib.pyplot as plt
 import pulp
 import math
 
+# Sayfa ayarları
 st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
 
+# ==========================================
+# GÖRSEL TASARIM (CSS INJECTION)
+# ==========================================
 custom_css = """
 <style>
 div[data-testid="stButton"] > button[kind="primary"] {
@@ -26,6 +31,9 @@ div[data-testid="stButton"] > button[kind="primary"]:hover {
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
+# ==========================================
+# TÜRKİYE 81 İL KOORDİNATLARI VE VARSAYILAN VERİ
+# ==========================================
 IL_KOORDINATLARI = {
     "Adana": (37.0000, 35.3213), "Adıyaman": (37.7648, 38.2786), "Afyonkarahisar": (38.7507, 30.5567),
     "Ağrı": (39.7191, 43.0503), "Amasya": (40.6499, 35.8353), "Ankara": (39.9334, 32.8597),
@@ -84,6 +92,9 @@ def haversine_km(lat1, lon1, lat2, lon2):
     a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
+# ==========================================
+# 1. SESSION STATE YÖNETİMİ
+# ==========================================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'current_view' not in st.session_state:
@@ -102,19 +113,25 @@ def reset_system():
     for k in ['pareto_sonuclari', 'kmeans_sonuclari', 'kmeans_calisti', 'milp_sonuc']:
         if k in st.session_state:
             del st.session_state[k]
-    st.success("Sistem hafızası sıfırlandı.")
+    st.success("Sistem hafızası sıfırlandı. Yeni veri yüklenebilir.")
 
 def go_to_dashboard():
     st.session_state.current_view = 'dashboard'
 
+# ==========================================
+# 2. GİRİŞ EKRANI (Login)
+# ==========================================
 def show_login():
     st.markdown("<h1 style='text-align: center;'>EV Batarya Tersine Lojistik Ağı KDS</h1>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center; opacity: 0.7;'>Sisteme Giriş Yapınız</h4>", unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("login_form"):
             username = st.text_input("Kullanıcı Adı")
             password = st.text_input("Şifre", type="password")
             submit = st.form_submit_button("Giriş Yap", use_container_width=True)
+            
             if submit:
                 if username == "admin" and password == "proje2026":
                     st.session_state.logged_in = True
@@ -123,18 +140,35 @@ def show_login():
                 else:
                     st.error("Hatalı kullanıcı adı veya şifre!")
 
+# ==========================================
+# 3. ANA PANEL (Dashboard)
+# ==========================================
 def show_dashboard():
     st.markdown("<h1 style='text-align: center;'>Sistem Kontrol Paneli</h1>", unsafe_allow_html=True)
+    st.markdown("""
+    <p style='text-align: center; font-size: 18px; max-width: 900px; margin: 0 auto; line-height: 1.6; opacity: 0.8;'>
+    Bu Karar Destek Sistemi, ömrünü tamamlamış elektrikli araç bataryalarının Türkiye genelinde toplanması ve geri kazanılması için tersine lojistik ağını tasarlamak amacıyla geliştirilmiştir.
+    </p><br><br>
+    """, unsafe_allow_html=True)
+    
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("MODÜL 1: ADAY MERKEZ BELİRLEME", key="btn_mod1", type="primary", use_container_width=True):
+        if st.button("MODÜL 1: ADAY MERKEZ BELİRLEME\n\nPareto, K-Means ve Minimax algoritmaları ile aday tesis konumlarını belirleyin.", key="btn_mod1", type="primary", use_container_width=True):
             st.session_state.current_view = 'module1'
             st.rerun()
     with col2:
-        if st.button("MODÜL 2: OPTİMİZASYON VE SENARYO ANALİZİ", key="btn_mod2", type="primary", use_container_width=True):
+        if st.button("MODÜL 2: OPTİMİZASYON VE SENARYO ANALİZİ\n\nParametreleri değiştirerek MILP modelini çalıştırın ve tüm karar değişkenlerini analiz edin.", key="btn_mod2", type="primary", use_container_width=True):
             st.session_state.current_view = 'module2'
             st.rerun()
+            
+    st.write("<br>", unsafe_allow_html=True)
+    _, col_logout, _ = st.columns([4, 2, 4])
+    with col_logout:
+        st.button("Güvenli Çıkış Yap", on_click=lambda: st.session_state.update({'logged_in': False, 'current_view': 'login'}), use_container_width=True)
 
+# ==========================================
+# 4. MODÜL 1 İÇERİĞİ
+# ==========================================
 def show_module1():
     st.header("Modül 1: Aday Toplama Merkezi Belirleme")
     col_back, col_reset = st.columns([8, 2])
@@ -144,13 +178,30 @@ def show_module1():
     
     if st.session_state.mod1_step >= 0:
         st.subheader("Adım 1: EV Verisi Yükleme")
+        st.write("Sütun başlıkları 'İl' ve 'EV_Sayısı' olan Excel dosyasını yükleyin (veya boş bırakıp varsayılan 81 il verisini kullanın):")
         col_up, col_def = st.columns([3, 1])
+        with col_up:
+            uploaded_file = st.file_uploader("Excel Yükle", type=['xlsx', 'xls'], label_visibility="collapsed")
         with col_def:
             if st.button("Varsayılan 81 İl Verisini Kullan", use_container_width=True):
                 df_def = pd.DataFrame(list(VARSAYILAN_EV_VERISI.items()), columns=['İl', 'EV_Sayısı'])
                 st.session_state.mod1_data = df_def
                 st.session_state.mod1_step = 1
                 st.rerun()
+
+        if uploaded_file is not None:
+            try:
+                df = pd.read_excel(uploaded_file)
+                if 'İl' not in df.columns or 'EV_Sayısı' not in df.columns:
+                    st.error("Excel dosyasında 'İl' ve 'EV_Sayısı' sütunları bulunamadı.")
+                else:
+                    st.session_state.mod1_data = df
+                    st.success(f"Veri başarıyla işlendi. Toplam {len(df)} il tespit edildi.")
+                    if st.button("Pareto Analizini Başlat", type="primary"):
+                        st.session_state.mod1_step = 1
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Dosya okuma hatası: {e}")
 
     if st.session_state.mod1_step >= 1 and st.session_state.mod1_data is not None:
         st.divider()
@@ -163,6 +214,17 @@ def show_module1():
         
         idx_80 = df_sorted[df_sorted['Kümülatif_Yüzde'] >= 80].index.min()
         pareto_df = df_sorted.iloc[:idx_80 + 1].copy()
+        st.info(f"Toplam talebin %80'ini karşılayan en yüksek yoğunluklu {len(pareto_df)} il, Aday Toplama Merkezi (j) olarak belirlendi.")
+        
+        m_pareto = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
+        for index, row in pareto_df.iterrows():
+            il_adi = str(row['İl']).strip().title()
+            if il_adi in IL_KOORDINATLARI:
+                lat, lon = IL_KOORDINATLARI[il_adi]
+                tooltip_html = f"<b>Tesis:</b> Aday Toplama Merkezi<br><b>İl:</b> {il_adi}<br><b>EV:</b> {row['EV_Sayısı']:,.0f}"
+                folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_pareto)
+                
+        st_folium(m_pareto, width=900, height=420, key="map_pareto")
         st.session_state.pareto_sonuclari = pareto_df
 
         if st.button("K-Means Kümeleme Algoritmasını Çalıştır", type="primary"):
@@ -171,8 +233,8 @@ def show_module1():
 
     if st.session_state.mod1_step >= 2:
         st.divider()
-        st.subheader("Adım 3: K-Means Kümeleme")
-        if st.button("K-Means Algoritmasını Çalıştır", type="primary", key="btn_kmeans"):
+        st.subheader("Adım 3: Dirsek Metodu ve SPSS Tabanlı K-Means Kümeleme")
+        if st.button("Dirsek Metodu ve K-Means Algoritmasını Çalıştır", type="primary", key="btn_kmeans"):
             pareto_df = st.session_state.pareto_sonuclari
             coords, sehirler = [], []
             for _, row in pareto_df.iterrows():
@@ -182,29 +244,106 @@ def show_module1():
                     sehirler.append(il_adi)
                     
             X = np.array(coords)
-            kmeans_final = KMeans(n_clusters=3, init=X[:3], n_init=1, max_iter=10, random_state=None)
+            max_k = min(10, len(coords))
+            k_degerleri = list(range(2, max_k + 1))
+            wcss = []
+            
+            for k in k_degerleri:
+                kmeans = KMeans(n_clusters=k, init=X[:k], n_init=1, max_iter=10, random_state=None)
+                kmeans.fit(X)
+                wcss.append(kmeans.inertia_)
+                
+            x1, y1 = k_degerleri[0], wcss[0]
+            x2, y2 = k_degerleri[-1], wcss[-1]
+            uzakliklar = [abs((y2 - y1)*k_degerleri[i] - (x2 - x1)*wcss[i] + x2*y1 - y2*x1) / np.sqrt((y2 - y1)**2 + (x2 - x1)**2) for i in range(len(k_degerleri))]
+            optimum_k = k_degerleri[np.argmax(uzakliklar)]
+            
+            st.session_state.optimum_k = optimum_k
+            st.session_state.wcss = wcss
+            st.session_state.k_degerleri = k_degerleri
+            
+            kmeans_final = KMeans(n_clusters=optimum_k, init=X[:optimum_k], n_init=1, max_iter=10, random_state=None)
             kmeans_final.fit(X)
             centroids = kmeans_final.cluster_centers_
             
             aday_isleme_merkezleri = []
             for i, centroid in enumerate(centroids):
-                closest_city = min(sehirler, key=lambda s: np.sqrt((centroid[0]-IL_KOORDINATLARI[s][0])**2 + (centroid[1]-IL_KOORDINATLARI[s][1])**2))
+                min_dist = float('inf')
+                closest_city = None
+                for sehir in sehirler:
+                    lat, lon = IL_KOORDINATLARI[sehir]
+                    dist = np.sqrt((centroid[0] - lat)**2 + (centroid[1] - lon)**2)
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_city = sehir
                 if not any(d['İl'] == closest_city for d in aday_isleme_merkezleri):
-                    aday_isleme_merkezleri.append({"İl": closest_city, "Lat": IL_KOORDINATLARI[closest_city][0], "Lon": IL_KOORDINATLARI[closest_city][1], "Kod": f"İM-{i+1}"})
+                    aday_isleme_merkezleri.append({
+                        "İl": closest_city,
+                        "Lat": IL_KOORDINATLARI[closest_city][0],
+                        "Lon": IL_KOORDINATLARI[closest_city][1],
+                        "Kod": f"İM-{i+1}"
+                    })
             st.session_state.kmeans_sonuclari = aday_isleme_merkezleri
             st.session_state.kmeans_calisti = True
 
         if st.session_state.get('kmeans_calisti', False):
+            opt_k = st.session_state.optimum_k
+            col_grafik, col_table = st.columns([2, 1])
+            with col_grafik:
+                fig, ax = plt.subplots(figsize=(6, 3.5))
+                ax.plot(st.session_state.k_degerleri, st.session_state.wcss, marker='o', color='#2F70AF', linewidth=2)
+                opt_wcss = st.session_state.wcss[opt_k - 2]
+                ax.plot(opt_k, opt_wcss, marker='o', markersize=10, color='red')
+                ax.set_title(f"Dirsek Grafiği (Optimum k={opt_k})")
+                ax.set_xlabel("Küme Sayısı (k)")
+                ax.set_ylabel("SSE")
+                ax.grid(True, linestyle='--', alpha=0.6)
+                st.pyplot(fig)
+            with col_table:
+                sse_df = pd.DataFrame({"Küme Sayısı (k)": st.session_state.k_degerleri, "SSE": [f"{v:,.2f}" for v in st.session_state.wcss]})
+                st.dataframe(sse_df, use_container_width=True, hide_index=True)
+
             if st.button("Minimax Algoritmasını Çalıştır", type="primary"):
                 st.session_state.mod1_step = 3
                 st.rerun()
 
     if st.session_state.mod1_step >= 3:
         st.divider()
+        st.subheader("Adım 4: Minimax Algoritması Sonuçları")
+        st.success("Tüm aday merkez konumları başarıyla tespit edildi! Aday Toplama, İşleme, Geri Dönüşüm ve İkinci Ömür Merkezleri haritada gösterilmektedir.")
+        
+        m_minimax = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
+        
+        if 'pareto_sonuclari' in st.session_state:
+            for _, row in st.session_state.pareto_sonuclari.iterrows():
+                il_adi = str(row['İl']).strip().title()
+                if il_adi in IL_KOORDINATLARI:
+                    lat, lon = IL_KOORDINATLARI[il_adi]
+                    folium.Marker([lat, lon], tooltip=f"Aday Toplama Merkezi: {il_adi}", icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_minimax)
+
+        if 'kmeans_sonuclari' in st.session_state:
+            for merkez in st.session_state.kmeans_sonuclari:
+                folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=f"Aday İşleme Merkezi: {merkez['İl']} ({merkez['Kod']})", icon=folium.Icon(color="red", icon="cog")).add_to(m_minimax)
+
+        geri_donusum_merkezleri = [("Adana", 37.0000, 35.3213, "GDM-01")]
+        ikinci_omur_merkezleri = [("Konya", 37.8667, 32.4833, "İÖM-01")]
+        
+        for il, lat, lon, kod in geri_donusum_merkezleri:
+            folium.Marker([lat, lon], tooltip=f"Aday Geri Dönüşüm Merkezi: {il} ({kod})", icon=folium.Icon(color="green", icon="recycle")).add_to(m_minimax)
+            
+        for il, lat, lon, kod in ikinci_omur_merkezleri:
+            folium.Marker([lat, lon], tooltip=f"Aday İkinci Ömür Merkezi: {il} ({kod})", icon=folium.Icon(color="orange", icon="flash")).add_to(m_minimax)
+
+        st_folium(m_minimax, width=900, height=450, key="map_minimax")
+
+        st.write("<br>", unsafe_allow_html=True)
         if st.button("Modül 2: Optimizasyon Modelini Çöz ➡", type="primary"):
             st.session_state.current_view = 'module2'
             st.rerun()
 
+# ==========================================
+# 5. MODÜL 2: MILP OPTİMİZASYON VE SENARYO ANALİZİ
+# ==========================================
 def solve_milp_model(params):
     ev_dict = params['ev_data']
     I = list(ev_dict.keys())
@@ -218,20 +357,35 @@ def solve_milp_model(params):
     binek_orani = params['binek_payi'] / 100.0
     gamma = params['gamma'] / 100.0
 
-    DE = {i: {'Binek': ev_dict[i]*binek_orani, 'Agir_Vasita': ev_dict[i]*(1.0-binek_orani)} for i in I}
+    DE = {}
+    for i in I:
+        toplam_arac = ev_dict[i]
+        DE[(i, 'Binek')] = toplam_arac * binek_orani
+        DE[(i, 'Agir_Vasita')] = toplam_arac * (1.0 - binek_orani)
+
     H = {'Binek': 96, 'Agir_Vasita': 1008}
     C = {'Binek': 3.5, 'Agir_Vasita': 0.0395}
 
-    R1, R2, R3 = params['R1']/100.0, params['R2']/100.0, params['R3']/100.0
+    R1 = params['R1'] / 100.0
+    R2 = params['R2'] / 100.0
+    R3 = params['R3'] / 100.0
+
     R21, R22, R23 = 0.2047, 0.7019, 0.0934
     CR = {'Grafit': 0.16, 'Aluminyum': 0.15, 'Bakir': 0.10, 'Kobalt': 0.07, 'Lityum': 0.07, 'Manganez': 0.05, 'Nikel': 0.04}
     RR = {'Grafit': 0.945, 'Aluminyum': 0.955, 'Bakir': 0.98, 'Kobalt': 0.965, 'Lityum': 0.98, 'Manganez': 0.99, 'Nikel': 0.985}
-    REV = {'Grafit': 1.2, 'Aluminyum': 2.4, 'Bakir': 8.5, 'Kobalt': params['rev_kobalt'], 'Lityum': params['rev_lityum'], 'Manganez': 1.8, 'Nikel': params['rev_nikel']}
 
-    CC = {'Binek': 120.0, 'Agir_Vasita': 250.0}
+    REV = {
+        'Grafit': 1.2, 'Aluminyum': 2.4, 'Bakir': 8.5,
+        'Kobalt': params['rev_kobalt'], 'Lityum': params['rev_lityum'],
+        'Manganez': 1.8, 'Nikel': params['rev_nikel']
+    }
+
+    CC = {'Binek': 8.3 * 96, 'Agir_Vasita': 8.3 * 1008} if params['hucre_bazli_cc'] else {'Binek': 120.0, 'Agir_Vasita': 250.0}
     C1 = {'Binek': params['c1_binek'], 'Agir_Vasita': params['c1_agir']}
     C21, C22, C23 = 62.3, 20.5, 0.215
-    C3, C4, C5 = params['c3_tasima'], params['c4_tasima'], params['c5_bertaraf']
+    C3 = params['c3_tasima']
+    C4 = params['c4_tasima']
+    C5 = params['c5_bertaraf']
     REC = {'Binek': 5.085, 'Agir_Vasita': 450.0}
 
     fj, fk, fl, fm = params['fj'], params['fk'], params['fl'], params['fm']
@@ -247,8 +401,8 @@ def solve_milp_model(params):
 
     model = pulp.LpProblem("EV_Batarya_Tersine_Lojistik_MILP", pulp.LpMinimize)
 
-    # İsim değişikliği yapılarak Streamlit önbellek hatası kesin olarak engellendi (y_ij)
-    y_ij = { (i, j): pulp.LpVariable(f"y_ij_{i}_{j}", lowBound=0, upBound=1, cat='Integer') for i in I for j in J }
+    # Python 3.13+ ve PuLP uyumsuzluğunu aşmak için Binary yerine lowBound=0, upBound=1, cat='Integer' kullanımı
+    x_ij = { (i, j): pulp.LpVariable(f"x_ij_{i}_{j}", lowBound=0, upBound=1, cat='Integer') for i in I for j in J }
     x_j = { j: pulp.LpVariable(f"x_j_{j}", lowBound=0, upBound=1, cat='Integer') for j in J }
     x_k = { k: pulp.LpVariable(f"x_k_{k}", lowBound=0, upBound=1, cat='Integer') for k in K }
     x_l = { l: pulp.LpVariable(f"x_l_{l}", lowBound=0, upBound=1, cat='Integer') for l in L }
@@ -269,23 +423,30 @@ def solve_milp_model(params):
     theta_mb = { (m, b): pulp.LpVariable(f"theta_mb_{m}_{b}", lowBound=0) for m in M for b in B }
     theta_mn = { (m, n): pulp.LpVariable(f"theta_mn_{m}_{n}", lowBound=0) for m in M for n in N }
 
+    # Amaç Fonksiyonu Bileşenleri
     maliyet_toplama = pulp.lpSum([z_ijb[(i, j, b)] * CC[b] + z_ijb[(i, j, b)] * d_ij[(i, j)] * C3 for i in I for j in J for b in B])
     maliyet_isleme = pulp.lpSum([W_jkb[(j, k, b)] * C1[b] + W_jkb[(j, k, b)] * d_jk[(j, k)] * C3 for j in J for k in K for b in B])
     maliyet_ikinci_omur = pulp.lpSum([(C21 * Wrep_lb[(l, b)] + C22 * Wrem_lb[(l, b)] + C23 * Wreu_lb[(l, b)]) + pulp.lpSum([W_klb[(k, l, b)] * d_kl[(k, l)] * C4 for k in K]) for l in L for b in B])
     maliyet_geri_donusum = pulp.lpSum([W_kmb[(k, m, b)] * d_km[(k, m)] * C4 for k in K for m in M for b in B]) + pulp.lpSum([theta_mb[(m, b)] * REC[b] for m in M for b in B])
     gelir_geri_donusum = pulp.lpSum([REV[n] * theta_mn[(m, n)] for m in M for n in N])
     maliyet_bertaraf = pulp.lpSum([W_kb[(k, b)] * C5 for k in K for b in B])
-    maliyet_insa = pulp.lpSum([fj * x_j[j] for j in J]) + pulp.lpSum([fk * x_k[k] for k in K]) + pulp.lpSum([fl * x_l[l] for l in L]) + pulp.lpSum([fm * x_m[m] for m in M])
+    maliyet_insa = (
+        pulp.lpSum([fj * x_j[j] for j in J]) +
+        pulp.lpSum([fk * x_k[k] for k in K]) +
+        pulp.lpSum([fl * x_l[l] for l in L]) +
+        pulp.lpSum([fm * x_m[m] for m in M])
+    )
 
     model += (maliyet_toplama + maliyet_isleme + maliyet_ikinci_omur + maliyet_geri_donusum - gelir_geri_donusum + maliyet_bertaraf + maliyet_insa), "Toplam_Net_Maliyet"
 
+    # Kısıtlar
     for i in I:
-        model += pulp.lpSum([y_ij[(i, j)] for j in J]) == 1, f"Atama_{i}"
+        model += pulp.lpSum([x_ij[(i, j)] for j in J]) == 1, f"Atama_{i}"
 
     for i in I:
         for j in J:
             for b in B:
-                model += z_ijb[(i, j, b)] == DE[i][b] * gamma * y_ij[(i, j)], f"Akis_z_{i}_{j}_{b}"
+                model += z_ijb[(i, j, b)] == DE[(i, b)] * gamma * x_ij[(i, j)], f"Akis_z_{i}_{j}_{b}"
 
     for j in J:
         for b in B:
@@ -333,9 +494,28 @@ def solve_milp_model(params):
         "x_k": {k: int(round(pulp.value(x_k[k]) or 0)) for k in K},
         "x_l": {l: int(round(pulp.value(x_l[l]) or 0)) for l in L},
         "x_m": {m: int(round(pulp.value(x_m[m]) or 0)) for m in M},
-        "x_ij": [(i, j) for i in I for j in J if (pulp.value(y_ij[(i, j)]) or 0) > 0.5],
-        "z_ijb": [], "W_jkb": [], "beta_kb": [], "W_kmb": [], "W_klb": [], "W_kb": [], "theta_mb": [],
-        "theta_mn": [{"Geri Dönüşüm Merkezi (m)": m, "Materyal (n)": n, "Geri Kazanılan Miktar (kg)": round(pulp.value(theta_mn[(m, n)]), 2), "Satış Geliri ($)": round(pulp.value(theta_mn[(m, n)]) * REV[n], 2)} for m in M for n in N if (pulp.value(theta_mn[(m, n)]) or 0) > 0.01]
+        "x_ij": [(i, j) for i in I for j in J if (pulp.value(x_ij[(i, j)]) or 0) > 0.5],
+        "z_ijb": [{"İl (i)": i, "Toplama Merkezi (j)": j, "Batarya Tipi (b)": b, "Miktar (Adet)": round(pulp.value(z_ijb[(i, j, b)]), 2)}
+                  for i in I for j in J for b in B if (pulp.value(z_ijb[(i, j, b)]) or 0) > 0.01],
+        "W_jkb": [{"Toplama Merkezi (j)": j, "İşleme Merkezi (k)": k, "Batarya Tipi (b)": b, "Miktar (Adet)": round(pulp.value(W_jkb[(j, k, b)]), 2)}
+                  for j in J for k in K for b in B if (pulp.value(W_jkb[(j, k, b)]) or 0) > 0.01],
+        "beta_kb": [{"İşleme Merkezi (k)": k, "Batarya Tipi (b)": b, "Toplam Batarya (Adet)": round(pulp.value(beta_kb[(k, b)]), 2)}
+                    for k in K for b in B if (pulp.value(beta_kb[(k, b)]) or 0) > 0.01],
+        "W_kmb": [{"İşleme Merkezi (k)": k, "Geri Dönüşüm Merkezi (m)": m, "Batarya Tipi (b)": b, "Hücre Sayısı": round(pulp.value(W_kmb[(k, m, b)]), 2)}
+                  for k in K for m in M for b in B if (pulp.value(W_kmb[(k, m, b)]) or 0) > 0.01],
+        "W_klb": [{"İşleme Merkezi (k)": k, "İkinci Ömür Merkezi (l)": l, "Batarya Tipi (b)": b,
+                   "Toplam Hücre": round(pulp.value(W_klb[(k, l, b)]), 2),
+                   "Wrep (Farklı Amaç)": round(pulp.value(Wrep_lb[(l, b)]), 2),
+                   "Wrem (Yeniden İmalat)": round(pulp.value(Wrem_lb[(l, b)]), 2),
+                   "Wreu (Doğrudan Kullanım)": round(pulp.value(Wreu_lb[(l, b)]), 2)}
+                  for k in K for l in L for b in B if (pulp.value(W_klb[(k, l, b)]) or 0) > 0.01],
+        "W_kb": [{"İşleme Merkezi (k)": k, "Batarya Tipi (b)": b, "Bertarafa Giden Hücre": round(pulp.value(W_kb[(k, b)]), 2)}
+                 for k in K for b in B if (pulp.value(W_kb[(k, b)]) or 0) > 0.01],
+        "theta_mb": [{"Geri Dönüşüm Merkezi (m)": m, "Batarya Tipi (b)": b, "Hücre Ağırlığı (kg)": round(pulp.value(theta_mb[(m, b)]), 2)}
+                     for m in M for b in B if (pulp.value(theta_mb[(m, b)]) or 0) > 0.01],
+        "theta_mn": [{"Geri Dönüşüm Merkezi (m)": m, "Materyal (n)": n, "Geri Kazanılan Miktar (kg)": round(pulp.value(theta_mn[(m, n)]), 2),
+                      "Satış Geliri ($)": round(pulp.value(theta_mn[(m, n)]) * REV[n], 2)}
+                     for m in M for n in N if (pulp.value(theta_mn[(m, n)]) or 0) > 0.01]
     }
 
 def show_module2():
@@ -345,13 +525,27 @@ def show_module2():
     col_reset.button("🔄 Hafızayı Sıfırla", on_click=reset_system)
     st.divider()
 
-    varsayilan_J = ["İstanbul", "Ankara", "İzmir", "Antalya", "Bursa", "Kocaeli", "Konya", "Adana", "Kayseri", "Gaziantep", "Mersin"]
-    varsayilan_K = ["Bursa", "Adana", "Konya"]
+    if 'pareto_sonuclari' in st.session_state:
+        varsayilan_J = [str(x).strip().title() for x in st.session_state.pareto_sonuclari['İl'].tolist()]
+    else:
+        varsayilan_J = ["İstanbul", "Ankara", "İzmir", "Antalya", "Bursa", "Kocaeli", "Konya", "Adana", "Kayseri", "Gaziantep", "Mersin"]
+
+    if 'kmeans_sonuclari' in st.session_state:
+        varsayilan_K = [x['İl'] for x in st.session_state.kmeans_sonuclari]
+    else:
+        varsayilan_K = ["Bursa", "Adana", "Konya"]
+
     varsayilan_L = ["Konya", "Adana"]
     varsayilan_M = ["Adana", "Konya"]
 
     ev_data = VARSAYILAN_EV_VERISI.copy()
+    if st.session_state.mod1_data is not None:
+        for _, r in st.session_state.mod1_data.iterrows():
+            il = str(r['İl']).strip().title()
+            if il in IL_KOORDINATLARI:
+                ev_data[il] = float(r['EV_Sayısı'])
 
+    st.subheader("1. Senaryo Parametrelerini Yapılandırın (What-If Analizi)")
     senaryo_adi = st.text_input("Senaryo Adı", value=f"Senaryo {len(st.session_state.senaryo_gecmisi) + 1}")
 
     with st.expander("A. Talep, Geri Toplama ve Batarya Kalite (SoH) Oranları", expanded=True):
@@ -415,9 +609,11 @@ def show_module2():
                 }
                 sonuc = solve_milp_model(params)
                 st.session_state.milp_sonuc = sonuc
+
                 if sonuc['durum'] == 'Optimal':
                     st.session_state.senaryo_gecmisi.append({
-                        "Senaryo": senaryo_adi, "Durum": sonuc['durum'],
+                        "Senaryo": senaryo_adi,
+                        "Durum": sonuc['durum'],
                         "Net Toplam Maliyet ($)": round(sonuc['amac_degeri'], 2),
                         "Açılan Toplama": sum(sonuc['x_j'].values()),
                         "Açılan İşleme": sum(sonuc['x_k'].values()),
@@ -439,16 +635,66 @@ def show_module2():
             k4.metric("Açılan İşleme", f"{sum(res['x_k'].values())}")
             k5.metric("Açılan İÖM & GDM", f"{sum(res['x_l'].values())} & {sum(res['x_m'].values())}")
 
-            fig_cost, ax_cost = plt.subplots(figsize=(7, 3.8))
-            kalemler = list(res['maliyet_kalemleri'].keys())
-            degerler = list(res['maliyet_kalemleri'].values())
-            renkler = ['#2F70AF' if v >= 0 else '#2E8B57' for v in degerler]
-            ax_cost.barh(kalemler, degerler, color=renkler)
-            ax_cost.axvline(0, color='black', linewidth=0.8)
-            ax_cost.set_title("Amaç Fonksiyonu Bileşenleri ($)")
-            ax_cost.grid(axis='x', linestyle='--', alpha=0.5)
-            st.pyplot(fig_cost)
+            col_g, col_t = st.columns([1.4, 1])
+            with col_g:
+                fig_cost, ax_cost = plt.subplots(figsize=(7, 3.8))
+                kalemler = list(res['maliyet_kalemleri'].keys())
+                degerler = list(res['maliyet_kalemleri'].values())
+                renkler = ['#2F70AF' if v >= 0 else '#2E8B57' for v in degerler]
+                ax_cost.barh(kalemler, degerler, color=renkler)
+                ax_cost.axvline(0, color='black', linewidth=0.8)
+                ax_cost.set_title("Amaç Fonksiyonu Bileşenleri ($)")
+                ax_cost.grid(axis='x', linestyle='--', alpha=0.5)
+                st.pyplot(fig_cost)
+            with col_t:
+                df_cost = pd.DataFrame({
+                    "Kalem": list(res['maliyet_kalemleri'].keys()),
+                    "Tutar": [f"${v:,.2f}" for v in res['maliyet_kalemleri'].values()]
+                })
+                st.dataframe(df_cost, use_container_width=True, hide_index=True)
 
+            st.subheader("3. Karar Değişkenleri Detaylı Sonuçları")
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+                "1️⃣ Tesis Açma (x)", "2️⃣ İl Atamaları (z)", "3️⃣ İşleme Yükü (β)",
+                "4️⃣ Geri Dönüşüm (θ)", "5️⃣ İkinci Ömür & Bertaraf", "6️⃣ Harita & Senaryo"
+            ])
+
+            with tab1:
+                c_j, c_k, c_l, c_m = st.columns(4)
+                with c_j: st.dataframe(pd.DataFrame(list(res['x_j'].items()), columns=["Merkez", "x_j"]), use_container_width=True, hide_index=True)
+                with c_k: st.dataframe(pd.DataFrame(list(res['x_k'].items()), columns=["Merkez", "x_k"]), use_container_width=True, hide_index=True)
+                with c_l: st.dataframe(pd.DataFrame(list(res['x_l'].items()), columns=["Merkez", "x_l"]), use_container_width=True, hide_index=True)
+                with c_m: st.dataframe(pd.DataFrame(list(res['x_m'].items()), columns=["Merkez", "x_m"]), use_container_width=True, hide_index=True)
+
+            with tab2:
+                if res['z_ijb']: st.dataframe(pd.DataFrame(res['z_ijb']), use_container_width=True, hide_index=True)
+
+            with tab3:
+                if res['beta_kb']: st.dataframe(pd.DataFrame(res['beta_kb']), use_container_width=True, hide_index=True)
+
+            with tab4:
+                if res['theta_mn']: st.dataframe(pd.DataFrame(res['theta_mn']), use_container_width=True, hide_index=True)
+
+            with tab5:
+                if res['W_klb']: st.dataframe(pd.DataFrame(res['W_klb']), use_container_width=True, hide_index=True)
+
+            with tab6:
+                m_opt = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
+                for j, acik in res['x_j'].items():
+                    if acik == 1: folium.Marker(IL_KOORDINATLARI[j], tooltip=f"Toplama: {j}", icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_opt)
+                for k, acik in res['x_k'].items():
+                    if acik == 1: folium.Marker(IL_KOORDINATLARI[k], tooltip=f"İşleme: {k}", icon=folium.Icon(color="red", icon="cog")).add_to(m_opt)
+                for l, acik in res['x_l'].items():
+                    if acik == 1: folium.Marker(IL_KOORDINATLARI[l], tooltip=f"İkinci Ömür: {l}", icon=folium.Icon(color="orange", icon="flash")).add_to(m_opt)
+                for m, acik in res['x_m'].items():
+                    if acik == 1: folium.Marker(IL_KOORDINATLARI[m], tooltip=f"Geri Dönüşüm: {m}", icon=folium.Icon(color="green", icon="recycle")).add_to(m_opt)
+                st_folium(m_opt, width=900, height=420, key="map_opt_final")
+                if st.session_state.senaryo_gecmisi:
+                    st.dataframe(pd.DataFrame(st.session_state.senaryo_gecmisi), use_container_width=True, hide_index=True)
+
+# ==========================================
+# ANA KONTROL MEKANİZMASI
+# ==========================================
 if not st.session_state.logged_in:
     show_login()
 else:
