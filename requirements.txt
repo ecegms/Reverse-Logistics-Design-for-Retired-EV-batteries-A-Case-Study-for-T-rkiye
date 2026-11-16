@@ -6,7 +6,7 @@ scikit-learn
 numpy
 matplotlib
 openpyxl
-pulp
+pulp>=2.9.0
 streamlit-folium
 scikit-learn
 pandas
