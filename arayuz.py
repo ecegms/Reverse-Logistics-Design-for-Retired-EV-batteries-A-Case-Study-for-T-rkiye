@@ -400,12 +400,12 @@ def solve_milp_model(params):
 
     model = pulp.LpProblem("EV_Batarya_Tersine_Lojistik_MILP", pulp.LpMinimize)
 
-    # Kesin çözüm için dictionary comprehension ile binary değişkenler
-    x_ij = { (i, j): pulp.LpVariable(f"x_ij_{i}_{j}", cat='Binary') for i in I for j in J }
-    x_j = { j: pulp.LpVariable(f"x_j_{j}", cat='Binary') for j in J }
-    x_k = { k: pulp.LpVariable(f"x_k_{k}", cat='Binary') for k in K }
-    x_l = { l: pulp.LpVariable(f"x_l_{l}", cat='Binary') for l in L }
-    x_m = { m: pulp.LpVariable(f"x_m_{m}", cat='Binary') for m in M }
+    # Python 3.13+ ve PuLP uyumsuzluğunu aşmak için Binary yerine lowBound=0, upBound=1, cat='Integer' kullanımı
+    x_ij = { (i, j): pulp.LpVariable(f"x_ij_{i}_{j}", lowBound=0, upBound=1, cat='Integer') for i in I for j in J }
+    x_j = { j: pulp.LpVariable(f"x_j_{j}", lowBound=0, upBound=1, cat='Integer') for j in J }
+    x_k = { k: pulp.LpVariable(f"x_k_{k}", lowBound=0, upBound=1, cat='Integer') for k in K }
+    x_l = { l: pulp.LpVariable(f"x_l_{l}", lowBound=0, upBound=1, cat='Integer') for l in L }
+    x_m = { m: pulp.LpVariable(f"x_m_{m}", lowBound=0, upBound=1, cat='Integer') for m in M }
 
     z_ijb = { (i, j, b): pulp.LpVariable(f"z_ijb_{i}_{j}_{b}", lowBound=0) for i in I for j in J for b in B }
     W_jkb = { (j, k, b): pulp.LpVariable(f"W_jkb_{j}_{k}_{b}", lowBound=0) for j in J for k in K for b in B }
