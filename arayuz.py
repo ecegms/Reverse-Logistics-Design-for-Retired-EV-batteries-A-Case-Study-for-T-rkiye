@@ -6,6 +6,7 @@ from streamlit_folium import st_folium
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt # Dirsek Grafiği için eklendi
+
 # Sayfa ayarları (Her zaman en üstte olmalı)
 st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
 
@@ -264,7 +265,7 @@ def show_module1():
             st.session_state.mod1_step = 2
             st.rerun()
 
-    # ==========================================
+   # ==========================================
 # ADIM 3: DİRSEK METODU DESTEKLİ GERÇEK K-MEANS 
 # ==========================================
 if st.session_state.mod1_step >= 2:
