@@ -1,7 +1,11 @@
-import streamlit as st
+# KODUN EN ÜSTÜNE EKLENECEK YENİ IMPORTLAR:
+from sklearn.cluster import KMeans
+import numpy as np
+import folium
+from streamlit_folium import st_folium
 import pandas as pd
-import time
-
+import streamlit as st
+import matplotlib.pyplot as plt # Dirsek Grafiği için eklendi
 # Sayfa ayarları (Her zaman en üstte olmalı)
 st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
 
@@ -260,37 +264,132 @@ def show_module1():
             st.session_state.mod1_step = 2
             st.rerun()
 
-    # ADIM 3: K-MEANS VE HARİTASI
-    if st.session_state.mod1_step >= 2:
-        st.divider()
-        st.subheader("Adım 3: K-Means Kümeleme Sonuçları")
-        st.info("Pareto çıktıları kullanılarak Aday İşleme Merkezleri belirlendi.")
+    # ==========================================
+# ADIM 3: DİRSEK METODU DESTEKLİ GERÇEK K-MEANS 
+# ==========================================
+if st.session_state.mod1_step >= 2:
+    st.divider()
+    st.subheader("Adım 3: Dirsek Metodu (Elbow Method) ve K-Means Kümeleme")
+    st.write("Sistem, Pareto analizi sonucunda elde edilen aday merkezleri kullanarak optimum Aday İşleme Merkezi sayısını Dirsek Metodu ile matematiksel olarak hesaplayacaktır.")
+    
+    if st.button("Dirsek Metodu ve K-Means Algoritmasını Çalıştır", type="primary", key="btn_kmeans"):
+        # 1. Pareto'dan gelen illerin koordinatlarını al
+        pareto_df = st.session_state.pareto_sonuclari
+        coords = []
+        sehirler = []
         
+        for index, row in pareto_df.iterrows():
+            il_adi = str(row['İl']).strip().title()
+            if il_adi in IL_KOORDINATLARI:
+                coords.append(IL_KOORDINATLARI[il_adi])
+                sehirler.append(il_adi)
+                
+        X = np.array(coords)
+        
+        # 2. DİRSEK METODU (ELBOW METHOD) HESAPLAMASI
+        # Aday il sayısına kadar k değerlerini dene (maksimum 10)
+        max_k = min(10, len(coords))
+        k_degerleri = list(range(1, max_k + 1))
+        wcss = []
+        
+        for k in k_degerleri:
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            kmeans.fit(X)
+            wcss.append(kmeans.inertia_)
+            
+        # Optimum k noktasını geometrik olarak bulma (Doğruya en uzak nokta)
+        p1 = np.array([k_degerleri[0], wcss[0]])
+        p2 = np.array([k_degerleri[-1], wcss[-1]])
+        uzakliklar = []
+        
+        for i in range(len(k_degerleri)):
+            p0 = np.array([k_degerleri[i], wcss[i]])
+            # Noktanın doğruya olan dik uzaklığı
+            uzaklik = np.linalg.norm(np.cross(p2-p1, p1-p0)) / np.linalg.norm(p2-p1)
+            uzakliklar.append(uzaklik)
+            
+        optimum_k = k_degerleri[np.argmax(uzakliklar)]
+        
+        st.session_state.optimum_k = optimum_k
+        st.session_state.wcss = wcss
+        st.session_state.k_degerleri = k_degerleri
+        
+        # 3. Bulunan OPTİMUM K değeri ile Nihai K-Means Modelini Çalıştır
+        kmeans_final = KMeans(n_clusters=optimum_k, random_state=42, n_init=10)
+        kmeans_final.fit(X)
+        centroids = kmeans_final.cluster_centers_
+        
+        # 4. Matematiksel merkezlere en yakın gerçek illeri atama
+        aday_isleme_merkezleri = []
+        for i, centroid in enumerate(centroids):
+            min_dist = float('inf')
+            closest_city = None
+            
+            for sehir in sehirler:
+                lat, lon = IL_KOORDINATLARI[sehir]
+                dist = np.sqrt((centroid[0] - lat)**2 + (centroid[1] - lon)**2)
+                if dist < min_dist:
+                    min_dist = dist
+                    closest_city = sehir
+            
+            # Aynı şehrin tekrar eklenmesini önlemek için küçük bir kontrol
+            if not any(d['İl'] == closest_city for d in aday_isleme_merkezleri):
+                aday_isleme_merkezleri.append({
+                    "İl": closest_city,
+                    "Lat": IL_KOORDINATLARI[closest_city][0],
+                    "Lon": IL_KOORDINATLARI[closest_city][1],
+                    "Kod": f"İM-{i+1}"
+                })
+        
+        st.session_state.kmeans_sonuclari = aday_isleme_merkezleri
+        st.session_state.kmeans_calisti = True
+
+    # EKRAN ÇIKTILARI (GRAFİK VE HARİTA)
+    if st.session_state.get('kmeans_calisti', False):
+        opt_k = st.session_state.optimum_k
+        
+        # 2 Kolon açıyoruz: Solda Dirsek Grafiği, Sağda Açıklama
+        col_grafik, col_bilgi = st.columns([1.5, 1])
+        
+        with col_grafik:
+            # Dirsek (Elbow) Grafiğinin Çizdirilmesi
+            fig, ax = plt.subplots(figsize=(6, 4))
+            ax.plot(st.session_state.k_degerleri, st.session_state.wcss, marker='o', linestyle='-', color='#2F70AF', linewidth=2)
+            # Optimum noktayı kırmızı ile işaretle
+            opt_wcss = st.session_state.wcss[opt_k - 1]
+            ax.plot(opt_k, opt_wcss, marker='o', markersize=10, color='red')
+            ax.annotate(f'Optimum k={opt_k}', xy=(opt_k, opt_wcss), xytext=(opt_k, opt_wcss + (max(st.session_state.wcss)*0.1)),
+                        arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=6))
+            
+            ax.set_title("K-Means Dirsek (Elbow) Grafiği")
+            ax.set_xlabel("Küme Sayısı (k)")
+            ax.set_ylabel("WCSS (Küme İçi Hata)")
+            ax.grid(True, linestyle='--', alpha=0.6)
+            st.pyplot(fig)
+            
+        with col_bilgi:
+            st.success(f"**Optimum Küme Sayısı: {opt_k}**")
+            st.write("Sistem, WCSS değerlerindeki kırılım noktasına (dirsek) olan en uzak mesafeyi hesaplayarak, veri setiniz için açılması gereken en uygun işleme merkezi sayısını otomatik olarak tespit etmiştir.")
+            st.info("Aşağıdaki haritada Pareto (Mavi) adayları, tespit edilen bu optimum küme merkezlerine (Kırmızı) göre atanmıştır.")
+
+        # 1. ve 2. Katmanların Birleştiği Harita
         m_kmeans = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
         
-        # TODO: Buraya K-Means sonuçlarını bağlayacaksın.
-        # Temsili K-Means Çıktıları
-        kmeans_sonuclari = [
-            ("Bursa", 40.1828, 29.0667, "İM-16"),
-            ("Kayseri", 38.7312, 35.4787, "İM-38")
-        ]
-        
-        for il, lat, lon, kod in kmeans_sonuclari:
-            tooltip_html = f"""
-            <div style='font-family: Arial; font-size: 14px;'>
-                <b>Tesis Tipi:</b> Aday İşleme Merkezi<br>
-                <b>İl Adı:</b> {il}<br>
-                <b>Merkez Kodu:</b> {kod}
-            </div>
-            """
-            # İşleme merkezleri için kırmızı renk kullanıyoruz
-            folium.Marker(
-                [lat, lon], 
-                tooltip=tooltip_html, 
-                icon=folium.Icon(color="red", icon="cog")
-            ).add_to(m_kmeans)
+        # Katman 1: Mavi Pinler (Pareto)
+        pareto_df = st.session_state.pareto_sonuclari
+        for index, row in pareto_df.iterrows():
+            il_adi = str(row['İl']).strip().title()
+            if il_adi in IL_KOORDINATLARI:
+                lat, lon = IL_KOORDINATLARI[il_adi]
+                tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday Toplama Merkezi<br><b>İl Adı:</b> {il_adi}</div>"
+                folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_kmeans)
+
+        # Katman 2: Kırmızı Pinler (Optimum K-Means)
+        for merkez in st.session_state.kmeans_sonuclari:
+            tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday İşleme Merkezi<br><b>İl Adı:</b> {merkez['İl']}<br><b>Merkez Kodu:</b> {merkez['Kod']}</div>"
+            folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=tooltip_html, icon=folium.Icon(color="red", icon="cog")).add_to(m_kmeans)
             
-        st_folium(m_kmeans, width=900, height=450, key="map_kmeans")
+        st_folium(m_kmeans, width=900, height=450, key="map_kmeans_real")
 
         if st.button("Minimax Algoritmasını Çalıştır", type="primary"):
             st.session_state.mod1_step = 3
