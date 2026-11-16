@@ -134,9 +134,42 @@ def show_dashboard():
 import folium
 from streamlit_folium import st_folium
 
-# ==========================================
-# 4. MODÜL 1 İÇERİĞİ (GÜNCELLENMİŞ HARİTALI VERSİYON)
-# ==========================================
+import folium
+import pandas as pd
+from streamlit_folium import st_folium
+import streamlit as st
+
+# Türkiye'nin 81 ilinin koordinat veri tabanı (Sistem bu sözlükten koordinatları otomatik çeker)
+IL_KOORDINATLARI = {
+    "Adana": (37.0000, 35.3213), "Adıyaman": (37.7648, 38.2786), "Afyonkarahisar": (38.7507, 30.5567),
+    "Ağrı": (39.7191, 43.0503), "Amasya": (40.6499, 35.8353), "Ankara": (39.9334, 32.8597),
+    "Antalya": (36.8969, 30.7133), "Artvin": (41.1828, 41.8183), "Aydın": (37.8380, 27.8456),
+    "Balıkesir": (39.6484, 27.8826), "Bilecik": (40.1451, 29.9799), "Bingöl": (38.8847, 40.4939),
+    "Bitlis": (38.4006, 42.1095), "Bolu": (40.7392, 31.6116), "Burdur": (37.7183, 30.2823),
+    "Bursa": (40.1828, 29.0667), "Çanakkale": (40.1553, 26.4142), "Çankırı": (40.6013, 33.6134),
+    "Çorum": (40.5506, 34.9556), "Denizli": (37.7765, 29.0864), "Diyarbakır": (37.9144, 40.2306),
+    "Edirne": (41.6744, 26.5583), "Elazığ": (38.6810, 39.2264), "Erzincan": (39.7500, 39.5000),
+    "Erzurum": (39.9000, 41.2700), "Eskişehir": (39.7767, 30.5206), "Gaziantep": (37.0662, 37.3833),
+    "Giresun": (40.9128, 38.3895), "Gümüşhane": (40.4606, 39.4814), "Hakkari": (37.5744, 43.7408),
+    "Hatay": (36.2000, 36.1667), "Isparta": (37.7648, 30.5566), "Mersin": (36.8000, 34.6333),
+    "İstanbul": (41.0082, 28.9784), "İzmir": (38.4237, 27.1428), "Kars": (40.6013, 43.0975),
+    "Kastamonu": (41.3766, 33.7765), "Kayseri": (38.7312, 35.4787), "Kırklareli": (41.7333, 27.2167),
+    "Kırşehir": (39.1425, 34.1709), "Kocaeli": (40.7654, 29.9408), "Konya": (37.8667, 32.4833),
+    "Kütahya": (39.4167, 29.9833), "Malatya": (38.3552, 38.3095), "Manisa": (38.6191, 27.4289),
+    "Kahramanmaraş": (37.5858, 36.9371), "Mardin": (37.3131, 40.7436), "Muğla": (37.2153, 28.3636),
+    "Muş": (38.7304, 41.4990), "Nevşehir": (38.6244, 34.7144), "Niğde": (37.9667, 34.6833),
+    "Ordu": (40.9839, 37.8764), "Rize": (41.0201, 40.5234), "Sakarya": (40.7569, 30.3783),
+    "Samsun": (41.2867, 36.3300), "Siirt": (37.9333, 41.9500), "Sinop": (42.0231, 35.1531),
+    "Sivas": (39.7477, 37.0179), "Tekirdağ": (40.9780, 27.5085), "Tokat": (40.3167, 36.5500),
+    "Trabzon": (41.0015, 39.7178), "Tunceli": (39.1079, 39.5401), "Şanlıurfa": (37.1591, 38.7969),
+    "Uşak": (38.6823, 29.4082), "Van": (38.4891, 43.3889), "Yozgat": (39.8181, 34.8147),
+    "Zonguldak": (41.4564, 31.7987), "Aksaray": (38.3687, 34.0370), "Bayburt": (40.2552, 40.2249),
+    "Karaman": (37.1811, 33.2222), "Kırıkkale": (39.8453, 33.5063), "Batman": (37.8812, 41.1351),
+    "Şırnak": (37.5228, 42.4594), "Bartın": (41.6344, 32.3375), "Ardahan": (41.1105, 42.7022),
+    "Iğdır": (39.9237, 44.0450), "Yalova": (40.6500, 29.2667), "Karabük": (41.2061, 32.6228),
+    "Kilis": (36.7184, 37.1147), "Osmaniye": (37.0742, 36.2475), "Düzce": (40.8438, 31.1565)
+}
+
 def show_module1():
     st.header("Modül 1: Aday Toplama Merkezi Belirleme")
     
@@ -146,53 +179,82 @@ def show_module1():
     
     st.divider()
     
-    # ADIM 1: VERİ YÜKLEME
+    # ADIM 1: GERÇEK VERİ YÜKLEME VE İŞLEME
     if st.session_state.mod1_step >= 0:
         st.subheader("Adım 1: EV Verisi Yükleme")
-        st.write("İllere göre elektrikli araç sayılarını içeren Excel dosyasını yükleyin:")
+        st.write("Sütun başlıkları 'İl' ve 'EV_Sayısı' olan Excel dosyasını yükleyin:")
         uploaded_file = st.file_uploader("", type=['xlsx', 'xls'], label_visibility="collapsed")
         
         if uploaded_file is not None:
-            st.session_state.mod1_data = "Veri Yüklendi" # Burada pd.read_excel(uploaded_file) yapacaksın
-            st.success("Dosya başarıyla sisteme aktarıldı.")
-            if st.button("Pareto Analizini Başlat", type="primary"):
-                st.session_state.mod1_step = 1
-                st.rerun()
+            try:
+                # Excel verisini gerçekten okuyoruz
+                df = pd.read_excel(uploaded_file)
+                
+                if 'İl' not in df.columns or 'EV_Sayısı' not in df.columns:
+                    st.error("Excel dosyasında 'İl' ve 'EV_Sayısı' sütunları bulunamadı. Lütfen sütun isimlerini kontrol edin.")
+                else:
+                    st.session_state.mod1_data = df
+                    st.success(f"Veri başarıyla işlendi. Toplam {len(df)} il tespit edildi.")
+                    
+                    if st.button("Pareto Analizini Başlat", type="primary"):
+                        st.session_state.mod1_step = 1
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Dosya okuma hatası: {e}")
 
-    # ADIM 2: PARETO ANALİZİ VE HARİTASI
+    # ADIM 2: GERÇEK MATEMATİKSEL PARETO ANALİZİ VE HARİTALAMA
     if st.session_state.mod1_step >= 1:
         st.divider()
         st.subheader("Adım 2: Pareto Analizi Sonuçları")
-        st.info("Toplam talebin %80'ini karşılayan iller belirlendi ve haritaya Aday Toplama Merkezi olarak işlendi.")
         
-        # Türkiye merkezli Folium haritası oluşturuluyor
+        df = st.session_state.mod1_data
+        
+        # 1. EV Sayısına göre büyükten küçüğe sırala
+        df_sorted = df.sort_values(by='EV_Sayısı', ascending=False).reset_index(drop=True)
+        
+        # 2. Kümülatif toplam ve kümülatif yüzde hesapla
+        toplam_ev = df_sorted['EV_Sayısı'].sum()
+        df_sorted['Kümülatif_Toplam'] = df_sorted['EV_Sayısı'].cumsum()
+        df_sorted['Kümülatif_Yüzde'] = (df_sorted['Kümülatif_Toplam'] / toplam_ev) * 100
+        
+        # 3. Kümülatif yüzdesi %80'e ulaşana kadar olan (ve %80'i ilk aşan) illeri filtrele
+        idx_80 = df_sorted[df_sorted['Kümülatif_Yüzde'] >= 80].index.min()
+        pareto_df = df_sorted.iloc[:idx_80 + 1].copy()
+        
+        secilen_il_sayisi = len(pareto_df)
+        st.info(f"Matematiksel analiz tamamlandı. Toplam talebin %80'ini karşılayan en yüksek yoğunluklu {secilen_il_sayisi} il, Aday Toplama Merkezi olarak belirlendi.")
+        
+        # Haritayı oluştur ve pinleri ekle
         m_pareto = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
         
-        # TODO: Buraya kendi Pareto algoritmanın çıktılarını bağlayacaksın. 
-        # Temsili Pareto Çıktıları (İl Adı, Enlem, Boylam, Merkez Kodu)
-        pareto_sonuclari = [
-            ("İstanbul", 41.0082, 28.9784, "TM-34"),
-            ("Ankara", 39.9334, 32.8597, "TM-06"),
-            ("İzmir", 38.4237, 27.1428, "TM-35")
-        ]
-        
-        for il, lat, lon, kod in pareto_sonuclari:
-            # HTML destekli gelişmiş Tooltip (Fare ile üzerine gelince çıkan bilgi kutusu)
-            tooltip_html = f"""
-            <div style='font-family: Arial; font-size: 14px;'>
-                <b>Tesis Tipi:</b> Aday Toplama Merkezi<br>
-                <b>İl Adı:</b> {il}<br>
-                <b>Merkez Kodu:</b> {kod}
-            </div>
-            """
-            folium.Marker(
-                [lat, lon], 
-                tooltip=tooltip_html, 
-                icon=folium.Icon(color="blue", icon="info-sign")
-            ).add_to(m_pareto)
+        for index, row in pareto_df.iterrows():
+            il_adi = str(row['İl']).strip().title()
+            ev_sayisi = row['EV_Sayısı']
+            merkez_kodu = f"TM-{index+1:02d}"
             
-        # Haritayı Streamlit ekrana bas
+            # İli koordinat sözlüğünde ara
+            if il_adi in IL_KOORDINATLARI:
+                lat, lon = IL_KOORDINATLARI[il_adi]
+                tooltip_html = f"""
+                <div style='font-family: Arial; font-size: 14px;'>
+                    <b>Tesis Tipi:</b> Aday Toplama Merkezi<br>
+                    <b>İl Adı:</b> {il_adi}<br>
+                    <b>EV Sayısı:</b> {ev_sayisi:,.0f}<br>
+                    <b>Merkez Kodu:</b> {merkez_kodu}
+                </div>
+                """
+                folium.Marker(
+                    [lat, lon], 
+                    tooltip=tooltip_html, 
+                    icon=folium.Icon(color="blue", icon="info-sign")
+                ).add_to(m_pareto)
+            else:
+                st.warning(f"Koordinat bulunamadı: {il_adi}. (Haritaya eklenemedi)")
+                
         st_folium(m_pareto, width=900, height=450, key="map_pareto")
+        
+        # Pareto sonucunu ileriki adımlar için session_state'e kaydet
+        st.session_state.pareto_sonuclari = pareto_df
 
         if st.button("K-Means Kümeleme Algoritmasını Çalıştır", type="primary"):
             st.session_state.mod1_step = 2
