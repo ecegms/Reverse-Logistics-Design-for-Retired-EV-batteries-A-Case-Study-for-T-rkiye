@@ -1,11 +1,10 @@
-# KODUN EN ÜSTÜNE EKLENECEK YENİ IMPORTLAR:
-from sklearn.cluster import KMeans
+import streamlit as st
+import pandas as pd
 import numpy as np
 import folium
 from streamlit_folium import st_folium
-import pandas as pd
-import streamlit as st
-import matplotlib.pyplot as plt # Dirsek Grafiği için eklendi
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
 
 # Sayfa ayarları (Her zaman en üstte olmalı)
 st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
@@ -15,14 +14,11 @@ st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
 # ==========================================
 custom_css = """
 <style>
-/* 
-Kullanıcının ilettiği paletteki güvenli ve kurumsal renkler kullanıldı. 
-Primary butonlar devasa, uzun dikdörtgenlere çevrildi.
-*/
+/* Kullanıcının ilettiği paletteki güvenli ve kurumsal renkler kullanıldı. */
 button[data-testid="baseButton-primary"] {
-    height: 400px !important; /* Boyu aşağıya doğru iyice uzatıldı */
+    height: 400px !important; 
     width: 100% !important;
-    background-color: #2F70AF !important; /* Paletteki Orta Mavi */
+    background-color: #2F70AF !important; 
     color: #ffffff !important; 
     border-radius: 15px !important;
     border: none !important;
@@ -35,20 +31,18 @@ button[data-testid="baseButton-primary"] {
     align-items: center !important;
 }
 
-/* Farenin modül butonunun üzerine gelme (Hover) efekti */
 button[data-testid="baseButton-primary"]:hover {
     transform: translateY(-8px) !important;
     box-shadow: 0 15px 30px rgba(47, 112, 175, 0.4) !important;
-    background-color: #1A3E62 !important; /* Paletteki Koyu Lacivert/Mavi */
+    background-color: #1A3E62 !important; 
     border: none !important;
 }
 
-/* DİKKAT: Metinlerin yan yana uzayıp 3 nokta (...) olmasını kesin olarak engelleyen kısım */
 button[data-testid="baseButton-primary"] div, 
 button[data-testid="baseButton-primary"] p,
 button[data-testid="baseButton-primary"] span,
 button[data-testid="baseButton-primary"] * {
-    white-space: pre-wrap !important; /* Kesinlikle alt satıra inmeye zorlar */
+    white-space: pre-wrap !important; 
     word-wrap: break-word !important;
     text-align: center !important;
     font-size: 20px !important;
@@ -62,7 +56,40 @@ button[data-testid="baseButton-primary"] * {
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # ==========================================
-# 1. SESSION STATE (Hafıza) YÖNETİMİ
+# TÜRKİYE KOORDİNAT VERİ TABANI
+# ==========================================
+IL_KOORDINATLARI = {
+    "Adana": (37.0000, 35.3213), "Adıyaman": (37.7648, 38.2786), "Afyonkarahisar": (38.7507, 30.5567),
+    "Ağrı": (39.7191, 43.0503), "Amasya": (40.6499, 35.8353), "Ankara": (39.9334, 32.8597),
+    "Antalya": (36.8969, 30.7133), "Artvin": (41.1828, 41.8183), "Aydın": (37.8380, 27.8456),
+    "Balıkesir": (39.6484, 27.8826), "Bilecik": (40.1451, 29.9799), "Bingöl": (38.8847, 40.4939),
+    "Bitlis": (38.4006, 42.1095), "Bolu": (40.7392, 31.6116), "Burdur": (37.7183, 30.2823),
+    "Bursa": (40.1828, 29.0667), "Çanakkale": (40.1553, 26.4142), "Çankırı": (40.6013, 33.6134),
+    "Çorum": (40.5506, 34.9556), "Denizli": (37.7765, 29.0864), "Diyarbakır": (37.9144, 40.2306),
+    "Edirne": (41.6744, 26.5583), "Elazığ": (38.6810, 39.2264), "Erzincan": (39.7500, 39.5000),
+    "Erzurum": (39.9000, 41.2700), "Eskişehir": (39.7767, 30.5206), "Gaziantep": (37.0662, 37.3833),
+    "Giresun": (40.9128, 38.3895), "Gümüşhane": (40.4606, 39.4814), "Hakkari": (37.5744, 43.7408),
+    "Hatay": (36.2000, 36.1667), "Isparta": (37.7648, 30.5566), "Mersin": (36.8000, 34.6333),
+    "İstanbul": (41.0082, 28.9784), "İzmir": (38.4237, 27.1428), "Kars": (40.6013, 43.0975),
+    "Kastamonu": (41.3766, 33.7765), "Kayseri": (38.7312, 35.4787), "Kırklareli": (41.7333, 27.2167),
+    "Kırşehir": (39.1425, 34.1709), "Kocaeli": (40.7654, 29.9408), "Konya": (37.8667, 32.4833),
+    "Kütahya": (39.4167, 29.9833), "Malatya": (38.3552, 38.3095), "Manisa": (38.6191, 27.4289),
+    "Kahramanmaraş": (37.5858, 36.9371), "Mardin": (37.3131, 40.7436), "Muğla": (37.2153, 28.3636),
+    "Muş": (38.7304, 41.4990), "Nevşehir": (38.6244, 34.7144), "Niğde": (37.9667, 34.6833),
+    "Ordu": (40.9839, 37.8764), "Rize": (41.0201, 40.5234), "Sakarya": (40.7569, 30.3783),
+    "Samsun": (41.2867, 36.3300), "Siirt": (37.9333, 41.9500), "Sinop": (42.0231, 35.1531),
+    "Sivas": (39.7477, 37.0179), "Tekirdağ": (40.9780, 27.5085), "Tokat": (40.3167, 36.5500),
+    "Trabzon": (41.0015, 39.7178), "Tunceli": (39.1079, 39.5401), "Şanlıurfa": (37.1591, 38.7969),
+    "Uşak": (38.6823, 29.4082), "Van": (38.4891, 43.3889), "Yozgat": (39.8181, 34.8147),
+    "Zonguldak": (41.4564, 31.7987), "Aksaray": (38.3687, 34.0370), "Bayburt": (40.2552, 40.2249),
+    "Karaman": (37.1811, 33.2222), "Kırıkkale": (39.8453, 33.5063), "Batman": (37.8812, 41.1351),
+    "Şırnak": (37.5228, 42.4594), "Bartın": (41.6344, 32.3375), "Ardahan": (41.1105, 42.7022),
+    "Iğdır": (39.9237, 44.0450), "Yalova": (40.6500, 29.2667), "Karabük": (41.2061, 32.6228),
+    "Kilis": (36.7184, 37.1147), "Osmaniye": (37.0742, 36.2475), "Düzce": (40.8438, 31.1565)
+}
+
+# ==========================================
+# 1. SESSION STATE YÖNETİMİ
 # ==========================================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -104,7 +131,7 @@ def show_login():
                     st.error("Hatalı kullanıcı adı veya şifre!")
 
 # ==========================================
-# 3. ANA PANEL (Dashboard - Mavi Paletli Dev Modüller)
+# 3. ANA PANEL (Dashboard)
 # ==========================================
 def show_dashboard():
     st.markdown("<h1 style='text-align: center;'>Sistem Kontrol Paneli</h1>", unsafe_allow_html=True)
@@ -119,7 +146,6 @@ def show_dashboard():
     col1, col2 = st.columns(2)
     
     with col1:
-        # Satır atlamaları \n\n ile korundu, yeni CSS sayesinde artık tek satırda kalmayacak
         btn_mod1_text = "MODÜL 1: ADAY MERKEZ BELİRLEME\n\nBu modülde veri yüklemesi yapıp, Pareto, K-Means ve Minimax algoritmaları ile toplama merkezlerinin stratejik konumlarını adım adım belirleyebilirsiniz."
         if st.button(btn_mod1_text, key="btn_mod1", type="primary", use_container_width=True):
             st.session_state.current_view = 'module1'
@@ -136,45 +162,9 @@ def show_dashboard():
     with col_logout:
         st.button("Güvenli Çıkış Yap", on_click=lambda: st.session_state.update({'logged_in': False, 'current_view': 'login'}), use_container_width=True)
 
-import folium
-from streamlit_folium import st_folium
-
-import folium
-import pandas as pd
-from streamlit_folium import st_folium
-import streamlit as st
-
-# Türkiye'nin 81 ilinin koordinat veri tabanı (Sistem bu sözlükten koordinatları otomatik çeker)
-IL_KOORDINATLARI = {
-    "Adana": (37.0000, 35.3213), "Adıyaman": (37.7648, 38.2786), "Afyonkarahisar": (38.7507, 30.5567),
-    "Ağrı": (39.7191, 43.0503), "Amasya": (40.6499, 35.8353), "Ankara": (39.9334, 32.8597),
-    "Antalya": (36.8969, 30.7133), "Artvin": (41.1828, 41.8183), "Aydın": (37.8380, 27.8456),
-    "Balıkesir": (39.6484, 27.8826), "Bilecik": (40.1451, 29.9799), "Bingöl": (38.8847, 40.4939),
-    "Bitlis": (38.4006, 42.1095), "Bolu": (40.7392, 31.6116), "Burdur": (37.7183, 30.2823),
-    "Bursa": (40.1828, 29.0667), "Çanakkale": (40.1553, 26.4142), "Çankırı": (40.6013, 33.6134),
-    "Çorum": (40.5506, 34.9556), "Denizli": (37.7765, 29.0864), "Diyarbakır": (37.9144, 40.2306),
-    "Edirne": (41.6744, 26.5583), "Elazığ": (38.6810, 39.2264), "Erzincan": (39.7500, 39.5000),
-    "Erzurum": (39.9000, 41.2700), "Eskişehir": (39.7767, 30.5206), "Gaziantep": (37.0662, 37.3833),
-    "Giresun": (40.9128, 38.3895), "Gümüşhane": (40.4606, 39.4814), "Hakkari": (37.5744, 43.7408),
-    "Hatay": (36.2000, 36.1667), "Isparta": (37.7648, 30.5566), "Mersin": (36.8000, 34.6333),
-    "İstanbul": (41.0082, 28.9784), "İzmir": (38.4237, 27.1428), "Kars": (40.6013, 43.0975),
-    "Kastamonu": (41.3766, 33.7765), "Kayseri": (38.7312, 35.4787), "Kırklareli": (41.7333, 27.2167),
-    "Kırşehir": (39.1425, 34.1709), "Kocaeli": (40.7654, 29.9408), "Konya": (37.8667, 32.4833),
-    "Kütahya": (39.4167, 29.9833), "Malatya": (38.3552, 38.3095), "Manisa": (38.6191, 27.4289),
-    "Kahramanmaraş": (37.5858, 36.9371), "Mardin": (37.3131, 40.7436), "Muğla": (37.2153, 28.3636),
-    "Muş": (38.7304, 41.4990), "Nevşehir": (38.6244, 34.7144), "Niğde": (37.9667, 34.6833),
-    "Ordu": (40.9839, 37.8764), "Rize": (41.0201, 40.5234), "Sakarya": (40.7569, 30.3783),
-    "Samsun": (41.2867, 36.3300), "Siirt": (37.9333, 41.9500), "Sinop": (42.0231, 35.1531),
-    "Sivas": (39.7477, 37.0179), "Tekirdağ": (40.9780, 27.5085), "Tokat": (40.3167, 36.5500),
-    "Trabzon": (41.0015, 39.7178), "Tunceli": (39.1079, 39.5401), "Şanlıurfa": (37.1591, 38.7969),
-    "Uşak": (38.6823, 29.4082), "Van": (38.4891, 43.3889), "Yozgat": (39.8181, 34.8147),
-    "Zonguldak": (41.4564, 31.7987), "Aksaray": (38.3687, 34.0370), "Bayburt": (40.2552, 40.2249),
-    "Karaman": (37.1811, 33.2222), "Kırıkkale": (39.8453, 33.5063), "Batman": (37.8812, 41.1351),
-    "Şırnak": (37.5228, 42.4594), "Bartın": (41.6344, 32.3375), "Ardahan": (41.1105, 42.7022),
-    "Iğdır": (39.9237, 44.0450), "Yalova": (40.6500, 29.2667), "Karabük": (41.2061, 32.6228),
-    "Kilis": (36.7184, 37.1147), "Osmaniye": (37.0742, 36.2475), "Düzce": (40.8438, 31.1565)
-}
-
+# ==========================================
+# 4. MODÜL 1 İÇERİĞİ
+# ==========================================
 def show_module1():
     st.header("Modül 1: Aday Toplama Merkezi Belirleme")
     
@@ -192,7 +182,6 @@ def show_module1():
         
         if uploaded_file is not None:
             try:
-                # Excel verisini gerçekten okuyoruz
                 df = pd.read_excel(uploaded_file)
                 
                 if 'İl' not in df.columns or 'EV_Sayısı' not in df.columns:
@@ -213,23 +202,17 @@ def show_module1():
         st.subheader("Adım 2: Pareto Analizi Sonuçları")
         
         df = st.session_state.mod1_data
-        
-        # 1. EV Sayısına göre büyükten küçüğe sırala
         df_sorted = df.sort_values(by='EV_Sayısı', ascending=False).reset_index(drop=True)
-        
-        # 2. Kümülatif toplam ve kümülatif yüzde hesapla
         toplam_ev = df_sorted['EV_Sayısı'].sum()
         df_sorted['Kümülatif_Toplam'] = df_sorted['EV_Sayısı'].cumsum()
         df_sorted['Kümülatif_Yüzde'] = (df_sorted['Kümülatif_Toplam'] / toplam_ev) * 100
         
-        # 3. Kümülatif yüzdesi %80'e ulaşana kadar olan (ve %80'i ilk aşan) illeri filtrele
         idx_80 = df_sorted[df_sorted['Kümülatif_Yüzde'] >= 80].index.min()
         pareto_df = df_sorted.iloc[:idx_80 + 1].copy()
-        
         secilen_il_sayisi = len(pareto_df)
+        
         st.info(f"Matematiksel analiz tamamlandı. Toplam talebin %80'ini karşılayan en yüksek yoğunluklu {secilen_il_sayisi} il, Aday Toplama Merkezi olarak belirlendi.")
         
-        # Haritayı oluştur ve pinleri ekle
         m_pareto = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
         
         for index, row in pareto_df.iterrows():
@@ -237,7 +220,6 @@ def show_module1():
             ev_sayisi = row['EV_Sayısı']
             merkez_kodu = f"TM-{index+1:02d}"
             
-            # İli koordinat sözlüğünde ara
             if il_adi in IL_KOORDINATLARI:
                 lat, lon = IL_KOORDINATLARI[il_adi]
                 tooltip_html = f"""
@@ -248,33 +230,22 @@ def show_module1():
                     <b>Merkez Kodu:</b> {merkez_kodu}
                 </div>
                 """
-                folium.Marker(
-                    [lat, lon], 
-                    tooltip=tooltip_html, 
-                    icon=folium.Icon(color="blue", icon="info-sign")
-                ).add_to(m_pareto)
-            else:
-                st.warning(f"Koordinat bulunamadı: {il_adi}. (Haritaya eklenemedi)")
+                folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_pareto)
                 
         st_folium(m_pareto, width=900, height=450, key="map_pareto")
-        
-        # Pareto sonucunu ileriki adımlar için session_state'e kaydet
         st.session_state.pareto_sonuclari = pareto_df
-# (Adım 2'nin en sonundaki buton kısmı)
+
         if st.button("K-Means Kümeleme Algoritmasını Çalıştır", type="primary"):
             st.session_state.mod1_step = 2
             st.rerun()
 
-    # ==========================================
     # ADIM 3: DİRSEK METODU DESTEKLİ GERÇEK K-MEANS 
-    # ==========================================
     if st.session_state.mod1_step >= 2:
         st.divider()
         st.subheader("Adım 3: Dirsek Metodu (Elbow Method) ve K-Means Kümeleme")
         st.write("Sistem, Pareto analizi sonucunda elde edilen aday merkezleri kullanarak optimum Aday İşleme Merkezi sayısını Dirsek Metodu ile matematiksel olarak hesaplayacaktır.")
         
         if st.button("Dirsek Metodu ve K-Means Algoritmasını Çalıştır", type="primary", key="btn_kmeans"):
-            # 1. Pareto'dan gelen illerin koordinatlarını al
             pareto_df = st.session_state.pareto_sonuclari
             coords = []
             sehirler = []
@@ -286,8 +257,6 @@ def show_module1():
                     sehirler.append(il_adi)
                     
             X = np.array(coords)
-            
-            # 2. DİRSEK METODU (ELBOW METHOD) HESAPLAMASI
             max_k = min(10, len(coords))
             k_degerleri = list(range(1, max_k + 1))
             wcss = []
@@ -297,14 +266,17 @@ def show_module1():
                 kmeans.fit(X)
                 wcss.append(kmeans.inertia_)
                 
-            # Optimum k noktasını geometrik olarak bulma
-            p1 = np.array([k_degerleri[0], wcss[0]])
-            p2 = np.array([k_degerleri[-1], wcss[-1]])
+            # HATA ÇÖZÜMÜ: np.cross yerine güvenli cebirsel uzaklık formülü
+            x1, y1 = k_degerleri[0], wcss[0]
+            x2, y2 = k_degerleri[-1], wcss[-1]
             uzakliklar = []
             
             for i in range(len(k_degerleri)):
-                p0 = np.array([k_degerleri[i], wcss[i]])
-                uzaklik = np.linalg.norm(np.cross(p2-p1, p1-p0)) / np.linalg.norm(p2-p1)
+                x0, y0 = k_degerleri[i], wcss[i]
+                # Noktanın doğruya dik uzaklığı formülü
+                pay = abs((y2 - y1)*x0 - (x2 - x1)*y0 + x2*y1 - y2*x1)
+                payda = np.sqrt((y2 - y1)**2 + (x2 - x1)**2)
+                uzaklik = pay / payda
                 uzakliklar.append(uzaklik)
                 
             optimum_k = k_degerleri[np.argmax(uzakliklar)]
@@ -313,12 +285,10 @@ def show_module1():
             st.session_state.wcss = wcss
             st.session_state.k_degerleri = k_degerleri
             
-            # 3. Bulunan OPTİMUM K değeri ile Nihai K-Means Modelini Çalıştır
             kmeans_final = KMeans(n_clusters=optimum_k, random_state=42, n_init=10)
             kmeans_final.fit(X)
             centroids = kmeans_final.cluster_centers_
             
-            # 4. Matematiksel merkezlere en yakın gerçek illeri atama
             aday_isleme_merkezleri = []
             for i, centroid in enumerate(centroids):
                 min_dist = float('inf')
@@ -342,7 +312,6 @@ def show_module1():
             st.session_state.kmeans_sonuclari = aday_isleme_merkezleri
             st.session_state.kmeans_calisti = True
 
-        # EKRAN ÇIKTILARI (GRAFİK VE HARİTA)
         if st.session_state.get('kmeans_calisti', False):
             opt_k = st.session_state.optimum_k
             
@@ -395,6 +364,7 @@ def show_module1():
         
         m_minimax = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
         
+        # Temsili Minimax Çıktıları
         geri_donusum_merkezleri = [("Eskişehir", 39.7767, 30.5206, "GDM-26")]
         ikinci_omur_merkezleri = [("Konya", 37.8667, 32.4833, "İÖM-42")]
         
