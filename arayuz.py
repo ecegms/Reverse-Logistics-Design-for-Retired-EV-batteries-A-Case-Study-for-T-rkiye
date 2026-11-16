@@ -8,21 +8,21 @@ st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
 # ==========================================
 # GÖRSEL TASARIM (CSS INJECTION)
 # ==========================================
-# Sadece "primary" (Ana) tipindeki butonları DEVASA KIRMIZI MODÜLLERE çevirir
-# Diğer normal butonlar (Giriş yap, Çıkış yap, Sıfırla) bu durumdan etkilenmez!
 custom_css = """
 <style>
-/* Modül Butonlarının Genel Tasarımı (Aşağıya doğru uzun ve kırmızı) */
+/* 
+Kullanıcının ilettiği paletteki güvenli ve kurumsal renkler kullanıldı. 
+Primary butonlar devasa, uzun dikdörtgenlere çevrildi.
+*/
 button[data-testid="baseButton-primary"] {
     height: 400px !important; /* Boyu aşağıya doğru iyice uzatıldı */
     width: 100% !important;
-    background-color: #C62828 !important; /* Tok ve profesyonel bir Kırmızı */
-    color: #ffffff !important; /* Buton içi yazı her modda beyaz kalır */
+    background-color: #2F70AF !important; /* Paletteki Orta Mavi */
+    color: #ffffff !important; 
     border-radius: 15px !important;
     border: none !important;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.2) !important; /* Buton (Derinlik) Hissi */
+    box-shadow: 0 10px 20px rgba(0,0,0,0.2) !important;
     transition: all 0.3s ease !important;
-    white-space: pre-wrap !important; /* Yazının üç nokta (...) olmasını engeller, alt satıra indirir */
     padding: 30px !important;
     display: flex !important;
     flex-direction: column !important;
@@ -33,18 +33,24 @@ button[data-testid="baseButton-primary"] {
 /* Farenin modül butonunun üzerine gelme (Hover) efekti */
 button[data-testid="baseButton-primary"]:hover {
     transform: translateY(-8px) !important;
-    box-shadow: 0 15px 30px rgba(198, 40, 40, 0.4) !important;
-    background-color: #D32F2F !important;
+    box-shadow: 0 15px 30px rgba(47, 112, 175, 0.4) !important;
+    background-color: #1A3E62 !important; /* Paletteki Koyu Lacivert/Mavi */
     border: none !important;
 }
 
-/* Buton içindeki yazıların (p etiketlerinin) formatı - Zarif font */
-button[data-testid="baseButton-primary"] p {
+/* DİKKAT: Metinlerin yan yana uzayıp 3 nokta (...) olmasını kesin olarak engelleyen kısım */
+button[data-testid="baseButton-primary"] div, 
+button[data-testid="baseButton-primary"] p,
+button[data-testid="baseButton-primary"] span,
+button[data-testid="baseButton-primary"] * {
+    white-space: pre-wrap !important; /* Kesinlikle alt satıra inmeye zorlar */
+    word-wrap: break-word !important;
+    text-align: center !important;
     font-size: 20px !important;
     font-weight: 500 !important;
     line-height: 1.6 !important;
-    text-align: center !important;
-    font-family: 'Georgia', serif !important; /* Zarif bir font ailesi */
+    font-family: 'Georgia', serif !important;
+    color: #ffffff !important;
 }
 </style>
 """
@@ -74,7 +80,6 @@ def go_to_dashboard():
 # 2. GİRİŞ EKRANI (Login)
 # ==========================================
 def show_login():
-    # Markdown'larda color belirtmiyoruz ki sistem Light/Dark moda göre rengi kendi ayarlasın
     st.markdown("<h1 style='text-align: center;'>EV Batarya Tersine Lojistik Ağı KDS</h1>", unsafe_allow_html=True)
     st.markdown("<h4 style='text-align: center; opacity: 0.7;'>Sisteme Giriş Yapınız</h4>", unsafe_allow_html=True)
     
@@ -86,7 +91,6 @@ def show_login():
             submit = st.form_submit_button("Giriş Yap", use_container_width=True)
             
             if submit:
-                # Güvenlik uyarısı vermemesi için şifreyi değiştirdik
                 if username == "admin" and password == "proje2026":
                     st.session_state.logged_in = True
                     st.session_state.current_view = 'dashboard'
@@ -95,12 +99,11 @@ def show_login():
                     st.error("Hatalı kullanıcı adı veya şifre!")
 
 # ==========================================
-# 3. ANA PANEL (Dashboard - Kırmızı Dev Modüller)
+# 3. ANA PANEL (Dashboard - Mavi Paletli Dev Modüller)
 # ==========================================
 def show_dashboard():
     st.markdown("<h1 style='text-align: center;'>Sistem Kontrol Paneli</h1>", unsafe_allow_html=True)
     
-    # Ortalanmış, mod uyumlu zarif açıklama paragrafı
     st.markdown("""
     <p style='text-align: center; font-size: 18px; max-width: 900px; margin: 0 auto; line-height: 1.6; opacity: 0.8;'>
     Bu Karar Destek Sistemi, ömrünü tamamlamış elektrikli araç bataryalarının Türkiye genelinde toplanması ve geri kazanılması için tersine lojistik ağını tasarlamak amacıyla geliştirilmiştir.
@@ -111,17 +114,14 @@ def show_dashboard():
     col1, col2 = st.columns(2)
     
     with col1:
-        # Alt satıra inmesi için \n kullanıyoruz. (Pre-wrap CSS'i sayesinde bu çalışacak)
+        # Satır atlamaları \n\n ile korundu, yeni CSS sayesinde artık tek satırda kalmayacak
         btn_mod1_text = "MODÜL 1: ADAY MERKEZ BELİRLEME\n\nBu modülde veri yüklemesi yapıp, Pareto, K-Means ve Minimax algoritmaları ile toplama merkezlerinin stratejik konumlarını adım adım belirleyebilirsiniz."
-        
-        # type="primary" parametresi sayesinde sadece bu butonlar dev kırmızı CSS kodundan etkilenir
         if st.button(btn_mod1_text, key="btn_mod1", type="primary", use_container_width=True):
             st.session_state.current_view = 'module1'
             st.rerun()
 
     with col2:
         btn_mod2_text = "MODÜL 2: OPTİMİZASYON VE SENARYO ANALİZİ\n\nBu modülde kapasite ve maliyet parametrelerini ayarlayarak MILP ağ optimizasyon modelini çalıştırabilir, finansal raporları inceleyebilirsiniz."
-        
         if st.button(btn_mod2_text, key="btn_mod2", type="primary", use_container_width=True):
             st.session_state.current_view = 'module2'
             st.rerun()
@@ -129,9 +129,7 @@ def show_dashboard():
     st.write("<br><br>", unsafe_allow_html=True)
     col_empty1, col_logout, col_empty2 = st.columns([4, 2, 4])
     with col_logout:
-        # type="secondary" (varsayılan) olduğu için bu buton standart kalır
         st.button("Güvenli Çıkış Yap", on_click=lambda: st.session_state.update({'logged_in': False, 'current_view': 'login'}), use_container_width=True)
-
 
 # ==========================================
 # 4. MODÜL 1 İÇERİĞİ
@@ -182,7 +180,6 @@ def show_module2():
     st.divider()
     
     st.write("Bu alana senaryo parametreleri ve model çalıştırma butonları eklenecektir.")
-
 
 # ==========================================
 # ANA KONTROL MEKANİZMASI
