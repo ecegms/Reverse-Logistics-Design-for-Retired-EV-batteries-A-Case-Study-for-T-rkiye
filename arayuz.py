@@ -238,11 +238,11 @@ def show_module1():
             st.session_state.mod1_step = 2
             st.rerun()
 
-    # ADIM 3: DİRSEK METODU DESTEKLİ GERÇEK K-MEANS VE TABLO
+    # ADIM 3: SPSS QUICK CLUSTER UYUMLU K-MEANS VE DİRSEK METODU
     if st.session_state.mod1_step >= 2:
         st.divider()
-        st.subheader("Adım 3: Dirsek Metodu (Elbow Method) ve K-Means Kümeleme")
-        st.write("Sistem, Pareto analizi sonucunda elde edilen aday merkezleri kullanarak optimum Aday İşleme Merkezi sayısını Dirsek Metodu ile matematiksel olarak hesaplayacaktır.")
+        st.subheader("Adım 3: Dirsek Metodu (Elbow Method) ve SPSS Tabanlı K-Means Kümeleme")
+        st.write("Sistem, SPSS Quick Cluster algoritma yapısı baz alınarak (ilk $k$ vakanın başlangıç merkezi alınması ve tekli çalıştırma) optimize edilmiştir.")
         
         if st.button("Dirsek Metodu ve K-Means Algoritmasını Çalıştır", type="primary", key="btn_kmeans"):
             pareto_df = st.session_state.pareto_sonuclari
@@ -258,16 +258,19 @@ def show_module1():
             X = np.array(coords)
             max_k = min(10, len(coords))
             
-            # DÜZELTME: K-Means k değeri 2'den başlatılıyor
             k_degerleri = list(range(2, max_k + 1))
             wcss = []
             
             for k in k_degerleri:
-                kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+                # SPSS QUICK CLUSTER YAPI AYARI: 
+                # init=X[:k] -> İlk k satırı başlangıç merkezi alır (rastgele seçimi engeller)
+                # n_init=1 -> Tek bir çalıştırma yapar
+                # max_iter=10 -> SPSS varsayılan iterasyon sınırı
+                kmeans = KMeans(n_clusters=k, init=X[:k], n_init=1, max_iter=10, random_state=None)
                 kmeans.fit(X)
                 wcss.append(kmeans.inertia_)
                 
-            # CEBİRSEL UZAKLIK FORMÜLÜ (HATA VERMEYEN KESİN ÇÖZÜM)
+            # CEBİRSEL UZAKLIK FORMÜLÜ (DİRSEK TESPİTİ)
             x1, y1 = k_degerleri[0], wcss[0]
             x2, y2 = k_degerleri[-1], wcss[-1]
             uzakliklar = []
@@ -285,7 +288,8 @@ def show_module1():
             st.session_state.wcss = wcss
             st.session_state.k_degerleri = k_degerleri
             
-            kmeans_final = KMeans(n_clusters=optimum_k, random_state=42, n_init=10)
+            # FİNAL K-MEANS (SPSS SPSS QUICK CLUSTER MANTIĞI İLE)
+            kmeans_final = KMeans(n_clusters=optimum_k, init=X[:optimum_k], n_init=1, max_iter=10, random_state=None)
             kmeans_final.fit(X)
             centroids = kmeans_final.cluster_centers_
             
@@ -316,20 +320,18 @@ def show_module1():
         if st.session_state.get('kmeans_calisti', False):
             opt_k = st.session_state.optimum_k
             
-            # Üst Kısım: Dirsek Grafiği ve Bilgi Metni
             col_grafik, col_bilgi = st.columns([1.5, 1])
             
             with col_grafik:
                 fig, ax = plt.subplots(figsize=(6, 4))
                 ax.plot(st.session_state.k_degerleri, st.session_state.wcss, marker='o', linestyle='-', color='#2F70AF', linewidth=2)
-                # İndeks düzeltmesi: k değerleri artık 2'den başladığı için, opt_k'nın listesindeki konumu opt_k - 2 olur.
                 opt_index = opt_k - 2 
                 opt_wcss = st.session_state.wcss[opt_index]
                 ax.plot(opt_k, opt_wcss, marker='o', markersize=10, color='red')
                 ax.annotate(f'Optimum k={opt_k}', xy=(opt_k, opt_wcss), xytext=(opt_k, opt_wcss + (max(st.session_state.wcss)*0.1)),
                             arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=6))
                 
-                ax.set_title("K-Means Dirsek (Elbow) Grafiği")
+                ax.set_title("K-Means Dirsek (Elbow) Grafiği (SPSS Yapısı)")
                 ax.set_xlabel("Küme Sayısı (k)")
                 ax.set_ylabel("SSE (Küme İçi Hata Kareler Toplamı)")
                 ax.grid(True, linestyle='--', alpha=0.6)
@@ -337,12 +339,11 @@ def show_module1():
                 
             with col_bilgi:
                 st.success(f"**Optimum Küme Sayısı: {opt_k}**")
-                st.write("Sistem, SSE değerlerindeki kırılım noktasına (dirsek) olan en uzak mesafeyi hesaplayarak, veri setiniz için açılması gereken en uygun işleme merkezi sayısını otomatik olarak tespit etmiştir.")
-                st.info("Aşağıdaki haritada Pareto (Mavi) adayları, tespit edilen bu optimum küme merkezlerine (Kırmızı) göre atanmıştır.")
+                st.write("Algoritma SPSS Quick Cluster yöntemiyle (ilk vakaları başlangıç merkezi alarak) çalıştırılmış ve SSE kırılım noktasından optimum küme sayısı tespit edilmiştir.")
+                st.info("Aşağıdaki haritada Pareto adayları, bu küme merkezlerine göre atanmıştır.")
 
             st.write("<br>", unsafe_allow_html=True)
 
-            # Alt Kısım: Solda Harita, Sağda SSE Tablosu
             col_map, col_table = st.columns([2.5, 1])
             
             with col_map:
@@ -385,7 +386,6 @@ def show_module1():
         
         m_minimax = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
         
-        # 1. KATMAN: Pareto Sonuçları (Mavi)
         if 'pareto_sonuclari' in st.session_state:
             pareto_df = st.session_state.pareto_sonuclari
             for index, row in pareto_df.iterrows():
@@ -395,13 +395,11 @@ def show_module1():
                     tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday Toplama Merkezi<br><b>İl Adı:</b> {il_adi}</div>"
                     folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_minimax)
 
-        # 2. KATMAN: K-Means Sonuçları (Kırmızı)
         if 'kmeans_sonuclari' in st.session_state:
             for merkez in st.session_state.kmeans_sonuclari:
                 tooltip_html = f"<div style='font-family: Arial; font-size: 14px;'><b>Tesis Tipi:</b> Aday İşleme Merkezi<br><b>İl Adı:</b> {merkez['İl']}</div>"
                 folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=tooltip_html, icon=folium.Icon(color="red", icon="cog")).add_to(m_minimax)
 
-        # 3. KATMAN: Minimax Sonuçları (Yeşil ve Turuncu) - (Temsili, Kendi Kodunla Güncelleyebilirsin)
         geri_donusum_merkezleri = [("Eskişehir", 39.7767, 30.5206, "GDM-26")]
         ikinci_omur_merkezleri = [("Konya", 37.8667, 32.4833, "İÖM-42")]
         
