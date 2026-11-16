@@ -14,11 +14,10 @@ st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
 # ==========================================
 custom_css = """
 <style>
-/* Kullanıcının ilettiği paletteki güvenli ve kurumsal renkler kullanıldı. */
 button[data-testid="baseButton-primary"] {
     height: 400px !important; 
     width: 100% !important;
-    background-color: #2F70AF !important; /* Paletteki Orta Mavi */
+    background-color: #2F70AF !important; 
     color: #ffffff !important; 
     border-radius: 15px !important;
     border: none !important;
@@ -34,7 +33,7 @@ button[data-testid="baseButton-primary"] {
 button[data-testid="baseButton-primary"]:hover {
     transform: translateY(-8px) !important;
     box-shadow: 0 15px 30px rgba(47, 112, 175, 0.4) !important;
-    background-color: #1A3E62 !important; /* Paletteki Koyu Lacivert/Mavi */
+    background-color: #1A3E62 !important; 
     border: none !important;
 }
 
@@ -258,7 +257,9 @@ def show_module1():
                     
             X = np.array(coords)
             max_k = min(10, len(coords))
-            k_degerleri = list(range(1, max_k + 1))
+            
+            # DÜZELTME: K-Means k değeri 2'den başlatılıyor
+            k_degerleri = list(range(2, max_k + 1))
             wcss = []
             
             for k in k_degerleri:
@@ -321,7 +322,9 @@ def show_module1():
             with col_grafik:
                 fig, ax = plt.subplots(figsize=(6, 4))
                 ax.plot(st.session_state.k_degerleri, st.session_state.wcss, marker='o', linestyle='-', color='#2F70AF', linewidth=2)
-                opt_wcss = st.session_state.wcss[opt_k - 1]
+                # İndeks düzeltmesi: k değerleri artık 2'den başladığı için, opt_k'nın listesindeki konumu opt_k - 2 olur.
+                opt_index = opt_k - 2 
+                opt_wcss = st.session_state.wcss[opt_index]
                 ax.plot(opt_k, opt_wcss, marker='o', markersize=10, color='red')
                 ax.annotate(f'Optimum k={opt_k}', xy=(opt_k, opt_wcss), xytext=(opt_k, opt_wcss + (max(st.session_state.wcss)*0.1)),
                             arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=6))
