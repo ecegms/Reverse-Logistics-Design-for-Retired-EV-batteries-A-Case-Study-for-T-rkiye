@@ -6,3 +6,10 @@ scikit-learn
 numpy
 matplotlib
 openpyxl
+pulp
+streamlit-folium
+scikit-learn
+pandas
+numpy
+matplotlib
+folium
