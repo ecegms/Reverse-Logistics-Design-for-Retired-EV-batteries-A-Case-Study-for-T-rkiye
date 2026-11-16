@@ -400,16 +400,16 @@ def solve_milp_model(params):
 
     model = pulp.LpProblem("EV_Batarya_Tersine_Lojistik_MILP", pulp.LpMinimize)
 
-    # Karar Değişkenleri (Güvenli Sözlük Tanımlamaları)
+    # Karar Değişkenleri (cat='Binary' string tanımı ile güncellendi)
     x_ij = {}
     for i in I:
         for j in J:
-            x_ij[(i, j)] = pulp.LpVariable(f"x_ij_{i}_{j}", cat=pulp.LpBinary)
+            x_ij[(i, j)] = pulp.LpVariable(f"x_ij_{i}_{j}", cat='Binary')
 
-    x_j = {j: pulp.LpVariable(f"x_j_{j}", cat=pulp.LpBinary) for j in J}
-    x_k = {k: pulp.LpVariable(f"x_k_{k}", cat=pulp.LpBinary) for k in K}
-    x_l = {l: pulp.LpVariable(f"x_l_{l}", cat=pulp.LpBinary) for l in L}
-    x_m = {m: pulp.LpVariable(f"x_m_{m}", cat=pulp.LpBinary) for m in M}
+    x_j = {j: pulp.LpVariable(f"x_j_{j}", cat='Binary') for j in J}
+    x_k = {k: pulp.LpVariable(f"x_k_{k}", cat='Binary') for k in K}
+    x_l = {l: pulp.LpVariable(f"x_l_{l}", cat='Binary') for l in L}
+    x_m = {m: pulp.LpVariable(f"x_m_{m}", cat='Binary') for m in M}
 
     z_ijb = {}
     for i in I:
