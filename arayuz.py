@@ -1,3 +1,136 @@
+import streamlit as st
+import pandas as pd
+import time
+
+# Sayfa ayarları (Her zaman en üstte olmalı)
+st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
+
+# ==========================================
+# GÖRSEL TASARIM (CSS INJECTION)
+# ==========================================
+custom_css = """
+<style>
+/* 
+Kullanıcının ilettiği paletteki güvenli ve kurumsal renkler kullanıldı. 
+Primary butonlar devasa, uzun dikdörtgenlere çevrildi.
+*/
+button[data-testid="baseButton-primary"] {
+    height: 400px !important; /* Boyu aşağıya doğru iyice uzatıldı */
+    width: 100% !important;
+    background-color: #2F70AF !important; /* Paletteki Orta Mavi */
+    color: #ffffff !important; 
+    border-radius: 15px !important;
+    border: none !important;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.2) !important;
+    transition: all 0.3s ease !important;
+    padding: 30px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+/* Farenin modül butonunun üzerine gelme (Hover) efekti */
+button[data-testid="baseButton-primary"]:hover {
+    transform: translateY(-8px) !important;
+    box-shadow: 0 15px 30px rgba(47, 112, 175, 0.4) !important;
+    background-color: #1A3E62 !important; /* Paletteki Koyu Lacivert/Mavi */
+    border: none !important;
+}
+
+/* DİKKAT: Metinlerin yan yana uzayıp 3 nokta (...) olmasını kesin olarak engelleyen kısım */
+button[data-testid="baseButton-primary"] div, 
+button[data-testid="baseButton-primary"] p,
+button[data-testid="baseButton-primary"] span,
+button[data-testid="baseButton-primary"] * {
+    white-space: pre-wrap !important; /* Kesinlikle alt satıra inmeye zorlar */
+    word-wrap: break-word !important;
+    text-align: center !important;
+    font-size: 20px !important;
+    font-weight: 500 !important;
+    line-height: 1.6 !important;
+    font-family: 'Georgia', serif !important;
+    color: #ffffff !important;
+}
+</style>
+"""
+st.markdown(custom_css, unsafe_allow_html=True)
+
+# ==========================================
+# 1. SESSION STATE (Hafıza) YÖNETİMİ
+# ==========================================
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if 'current_view' not in st.session_state:
+    st.session_state.current_view = 'login'
+if 'mod1_data' not in st.session_state:
+    st.session_state.mod1_data = None
+if 'mod1_step' not in st.session_state:
+    st.session_state.mod1_step = 0 
+
+def reset_system():
+    st.session_state.mod1_data = None
+    st.session_state.mod1_step = 0
+    st.success("Sistem hafızası sıfırlandı. Yeni veri yüklenebilir.")
+
+def go_to_dashboard():
+    st.session_state.current_view = 'dashboard'
+
+# ==========================================
+# 2. GİRİŞ EKRANI (Login)
+# ==========================================
+def show_login():
+    st.markdown("<h1 style='text-align: center;'>EV Batarya Tersine Lojistik Ağı KDS</h1>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center; opacity: 0.7;'>Sisteme Giriş Yapınız</h4>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        with st.form("login_form"):
+            username = st.text_input("Kullanıcı Adı")
+            password = st.text_input("Şifre", type="password")
+            submit = st.form_submit_button("Giriş Yap", use_container_width=True)
+            
+            if submit:
+                if username == "admin" and password == "proje2026":
+                    st.session_state.logged_in = True
+                    st.session_state.current_view = 'dashboard'
+                    st.rerun()
+                else:
+                    st.error("Hatalı kullanıcı adı veya şifre!")
+
+# ==========================================
+# 3. ANA PANEL (Dashboard - Mavi Paletli Dev Modüller)
+# ==========================================
+def show_dashboard():
+    st.markdown("<h1 style='text-align: center;'>Sistem Kontrol Paneli</h1>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    <p style='text-align: center; font-size: 18px; max-width: 900px; margin: 0 auto; line-height: 1.6; opacity: 0.8;'>
+    Bu Karar Destek Sistemi, ömrünü tamamlamış elektrikli araç bataryalarının Türkiye genelinde toplanması ve geri kazanılması için tersine lojistik ağını tasarlamak amacıyla geliştirilmiştir.
+    </p>
+    <br><br>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Satır atlamaları \n\n ile korundu, yeni CSS sayesinde artık tek satırda kalmayacak
+        btn_mod1_text = "MODÜL 1: ADAY MERKEZ BELİRLEME\n\nBu modülde veri yüklemesi yapıp, Pareto, K-Means ve Minimax algoritmaları ile toplama merkezlerinin stratejik konumlarını adım adım belirleyebilirsiniz."
+        if st.button(btn_mod1_text, key="btn_mod1", type="primary", use_container_width=True):
+            st.session_state.current_view = 'module1'
+            st.rerun()
+
+    with col2:
+        btn_mod2_text = "MODÜL 2: OPTİMİZASYON VE SENARYO ANALİZİ\n\nBu modülde kapasite ve maliyet parametrelerini ayarlayarak MILP ağ optimizasyon modelini çalıştırabilir, finansal raporları inceleyebilirsiniz."
+        if st.button(btn_mod2_text, key="btn_mod2", type="primary", use_container_width=True):
+            st.session_state.current_view = 'module2'
+            st.rerun()
+            
+    st.write("<br><br>", unsafe_allow_html=True)
+    col_empty1, col_logout, col_empty2 = st.columns([4, 2, 4])
+    with col_logout:
+        st.button("Güvenli Çıkış Yap", on_click=lambda: st.session_state.update({'logged_in': False, 'current_view': 'login'}), use_container_width=True)
+
 import folium
 from streamlit_folium import st_folium
 
@@ -123,3 +256,30 @@ def show_module1():
             folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="orange", icon="flash")).add_to(m_minimax)
 
         st_folium(m_minimax, width=900, height=450, key="map_minimax")
+
+# ==========================================
+# 5. MODÜL 2 İÇERİĞİ
+# ==========================================
+def show_module2():
+    st.header("Modül 2: Optimizasyon ve Senaryo Analizi")
+    
+    col_back, col_reset = st.columns([8, 2])
+    col_back.button("⬅ Kontrol Paneline Dön", on_click=go_to_dashboard)
+    col_reset.button("🔄 Hafızayı Sıfırla", on_click=reset_system)
+    
+    st.divider()
+    
+    st.write("Bu alana senaryo parametreleri ve model çalıştırma butonları eklenecektir.")
+
+# ==========================================
+# ANA KONTROL MEKANİZMASI
+# ==========================================
+if not st.session_state.logged_in:
+    show_login()
+else:
+    if st.session_state.current_view == 'dashboard':
+        show_dashboard()
+    elif st.session_state.current_view == 'module1':
+        show_module1()
+    elif st.session_state.current_view == 'module2':
+        show_module2()
