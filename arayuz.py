@@ -311,10 +311,8 @@ def show_module1():
         st.subheader("Adım 4: Minimax Algoritması Sonuçları")
         st.success("Tüm aday merkez konumları başarıyla tespit edildi! Aday Toplama, İşleme, Geri Dönüşüm ve İkinci Ömür Merkezleri haritada gösterilmektedir.")
         
-        # Harita Görselleştirmesi (Toplama, İşleme, Geri Dönüşüm ve İkinci Ömür Merkezleri)
         m_minimax = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
         
-        # 1. Toplama Merkezleri (Mavi)
         if 'pareto_sonuclari' in st.session_state:
             for _, row in st.session_state.pareto_sonuclari.iterrows():
                 il_adi = str(row['İl']).strip().title()
@@ -322,12 +320,10 @@ def show_module1():
                     lat, lon = IL_KOORDINATLARI[il_adi]
                     folium.Marker([lat, lon], tooltip=f"Aday Toplama Merkezi: {il_adi}", icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_minimax)
 
-        # 2. İşleme Merkezleri (Kırmızı)
         if 'kmeans_sonuclari' in st.session_state:
             for merkez in st.session_state.kmeans_sonuclari:
                 folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=f"Aday İşleme Merkezi: {merkez['İl']} ({merkez['Kod']})", icon=folium.Icon(color="red", icon="cog")).add_to(m_minimax)
 
-        # 3. Geri Dönüşüm ve İkinci Ömür Merkezleri (Yeşil ve Turuncu)
         geri_donusum_merkezleri = [("Adana", 37.0000, 35.3213, "GDM-01")]
         ikinci_omur_merkezleri = [("Konya", 37.8667, 32.4833, "İÖM-01")]
         
@@ -358,14 +354,13 @@ def solve_milp_model(params):
     N = ['Grafit', 'Aluminyum', 'Bakir', 'Kobalt', 'Lityum', 'Manganez', 'Nikel']
 
     binek_orani = params['binek_payi'] / 100.0
-    agir_orani = 1.0 - binek_orani
     gamma = params['gamma'] / 100.0
 
     DE = {}
     for i in I:
         toplam_arac = ev_dict[i]
         DE[(i, 'Binek')] = toplam_arac * binek_orani
-        DE[(i, 'Agir_Vasita')] = toplam_arac * agir_orani
+        DE[(i, 'Agir_Vasita')] = toplam_arac * (1.0 - binek_orani)
 
     H = {'Binek': 96, 'Agir_Vasita': 1008}
     C = {'Binek': 3.5, 'Agir_Vasita': 0.0395}
@@ -405,27 +400,76 @@ def solve_milp_model(params):
 
     model = pulp.LpProblem("EV_Batarya_Tersine_Lojistik_MILP", pulp.LpMinimize)
 
-    x_ij = pulp.LpVariable.dicts("x_ij", [(i, j) for i in I for j in J], cat=pulp.LpBinary)
-    x_j = pulp.LpVariable.dicts("x_j", J, cat=pulp.LpBinary)
-    x_k = pulp.LpVariable.dicts("x_k", K, cat=pulp.LpBinary)
-    x_l = pulp.LpVariable.dicts("x_l", L, cat=pulp.LpBinary)
-    x_m = pulp.LpVariable.dicts("x_m", M, cat=pulp.LpBinary)
+    # Karar Değişkenleri (Güvenli Sözlük Tanımlamaları)
+    x_ij = {}
+    for i in I:
+        for j in J:
+            x_ij[(i, j)] = pulp.LpVariable(f"x_ij_{i}_{j}", cat=pulp.LpBinary)
 
-    z_ijb = pulp.LpVariable.dicts("z_ijb", [(i, j, b) for i in I for j in J for b in B], lowBound=0)
-    W_jkb = pulp.LpVariable.dicts("W_jkb", [(j, k, b) for j in J for k in K for b in B], lowBound=0)
-    beta_kb = pulp.LpVariable.dicts("beta_kb", [(k, b) for k in K for b in B], lowBound=0)
-    W_kmb = pulp.LpVariable.dicts("W_kmb", [(k, m, b) for k in K for m in M for b in B], lowBound=0)
-    W_klb = pulp.LpVariable.dicts("W_klb", [(k, l, b) for k in K for l in L for b in B], lowBound=0)
-    W_kb = pulp.LpVariable.dicts("W_kb", [(k, b) for k in K for b in B], lowBound=0)
+    x_j = {j: pulp.LpVariable(f"x_j_{j}", cat=pulp.LpBinary) for j in J}
+    x_k = {k: pulp.LpVariable(f"x_k_{k}", cat=pulp.LpBinary) for k in K}
+    x_l = {l: pulp.LpVariable(f"x_l_{l}", cat=pulp.LpBinary) for l in L}
+    x_m = {m: pulp.LpVariable(f"x_m_{m}", cat=pulp.LpBinary) for m in M}
 
-    Wrep_lb = pulp.LpVariable.dicts("Wrep_lb", [(l, b) for l in L for b in B], lowBound=0)
-    Wrem_lb = pulp.LpVariable.dicts("Wrem_lb", [(l, b) for l in L for b in B], lowBound=0)
-    Wreu_lb = pulp.LpVariable.dicts("Wreu_lb", [(l, b) for l in L for b in B], lowBound=0)
+    z_ijb = {}
+    for i in I:
+        for j in J:
+            for b in B:
+                z_ijb[(i, j, b)] = pulp.LpVariable(f"z_ijb_{i}_{j}_{b}", lowBound=0)
 
-    theta_lb = pulp.LpVariable.dicts("theta_lb", [(l, b) for l in L for b in B], lowBound=0)
-    theta_mb = pulp.LpVariable.dicts("theta_mb", [(m, b) for m in M for b in B], lowBound=0)
-    theta_mn = pulp.LpVariable.dicts("theta_mn", [(m, n) for m in M for n in N], lowBound=0)
+    W_jkb = {}
+    for j in J:
+        for k in K:
+            for b in B:
+                W_jkb[(j, k, b)] = pulp.LpVariable(f"W_jkb_{j}_{k}_{b}", lowBound=0)
 
+    beta_kb = {}
+    for k in K:
+        for b in B:
+            beta_kb[(k, b)] = pulp.LpVariable(f"beta_kb_{k}_{b}", lowBound=0)
+
+    W_kmb = {}
+    for k in K:
+        for m in M:
+            for b in B:
+                W_kmb[(k, m, b)] = pulp.LpVariable(f"W_kmb_{k}_{m}_{b}", lowBound=0)
+
+    W_klb = {}
+    for k in K:
+        for l in L:
+            for b in B:
+                W_klb[(k, l, b)] = pulp.LpVariable(f"W_klb_{k}_{l}_{b}", lowBound=0)
+
+    W_kb = {}
+    for k in K:
+        for b in B:
+            W_kb[(k, b)] = pulp.LpVariable(f"W_kb_{k}_{b}", lowBound=0)
+
+    Wrep_lb = {}
+    Wrem_lb = {}
+    Wreu_lb = {}
+    for l in L:
+        for b in B:
+            Wrep_lb[(l, b)] = pulp.LpVariable(f"Wrep_lb_{l}_{b}", lowBound=0)
+            Wrem_lb[(l, b)] = pulp.LpVariable(f"Wrem_lb_{l}_{b}", lowBound=0)
+            Wreu_lb[(l, b)] = pulp.LpVariable(f"Wreu_lb_{l}_{b}", lowBound=0)
+
+    theta_lb = {}
+    for l in L:
+        for b in B:
+            theta_lb[(l, b)] = pulp.LpVariable(f"theta_lb_{l}_{b}", lowBound=0)
+
+    theta_mb = {}
+    for m in M:
+        for b in B:
+            theta_mb[(m, b)] = pulp.LpVariable(f"theta_mb_{m}_{b}", lowBound=0)
+
+    theta_mn = {}
+    for m in M:
+        for n in N:
+            theta_mn[(m, n)] = pulp.LpVariable(f"theta_mn_{m}_{n}", lowBound=0)
+
+    # Amaç Fonksiyonu Bileşenleri
     maliyet_toplama = pulp.lpSum([z_ijb[(i, j, b)] * CC[b] + z_ijb[(i, j, b)] * d_ij[(i, j)] * C3 for i in I for j in J for b in B])
     maliyet_isleme = pulp.lpSum([W_jkb[(j, k, b)] * C1[b] + W_jkb[(j, k, b)] * d_jk[(j, k)] * C3 for j in J for k in K for b in B])
     maliyet_ikinci_omur = pulp.lpSum([(C21 * Wrep_lb[(l, b)] + C22 * Wrem_lb[(l, b)] + C23 * Wreu_lb[(l, b)]) + pulp.lpSum([W_klb[(k, l, b)] * d_kl[(k, l)] * C4 for k in K]) for l in L for b in B])
@@ -441,6 +485,7 @@ def solve_milp_model(params):
 
     model += (maliyet_toplama + maliyet_isleme + maliyet_ikinci_omur + maliyet_geri_donusum - gelir_geri_donusum + maliyet_bertaraf + maliyet_insa), "Toplam_Net_Maliyet"
 
+    # Kısıtlar
     for i in I:
         model += pulp.lpSum([x_ij[(i, j)] for j in J]) == 1, f"Atama_{i}"
 
