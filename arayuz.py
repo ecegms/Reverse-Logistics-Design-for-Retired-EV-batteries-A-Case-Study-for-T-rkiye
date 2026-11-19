@@ -371,21 +371,34 @@ def show_module1():
 
         if st.session_state.get('kmeans_calisti', False):
             opt_k = st.session_state.optimum_k
-            col_grafik, col_table = st.columns([2, 1])
+            col_grafik, col_table, _ = st.columns([1.35, 0.95, 0.7], gap="medium")
             with col_grafik:
-                fig, ax = plt.subplots(figsize=(6, 3.5))
-                ax.plot(st.session_state.k_degerleri, st.session_state.wcss, marker='o', color='#2F70AF', linewidth=2)
+                fig, ax = plt.subplots(figsize=(6.2, 3.6), dpi=100)
+                ax.plot(
+                    st.session_state.k_degerleri,
+                    st.session_state.wcss,
+                    marker='o',
+                    markersize=5,
+                    color='#2F70AF',
+                    linewidth=2,
+                )
                 opt_idx = st.session_state.k_degerleri.index(opt_k)
                 opt_wcss = st.session_state.wcss[opt_idx]
-                ax.plot(opt_k, opt_wcss, marker='o', markersize=10, color='red')
-                ax.set_title(f"Dirsek Grafiği (Optimum k={opt_k})")
-                ax.set_xlabel("Küme Sayısı (k)")
-                ax.set_ylabel("SSE")
-                ax.grid(True, linestyle='--', alpha=0.6)
-                st.pyplot(fig)
+                ax.plot(opt_k, opt_wcss, marker='o', markersize=8, color='red')
+                ax.set_title(f"Dirsek Grafiği (Optimum k={opt_k})", fontsize=11, fontweight='bold', pad=10, color='#1E293B')
+                ax.set_xlabel("Küme Sayısı (k)", fontsize=9.5, labelpad=6, color='#334155')
+                ax.set_ylabel("SSE", fontsize=9.5, labelpad=6, color='#334155')
+                ax.set_xticks(st.session_state.k_degerleri)
+                ax.tick_params(axis='both', labelsize=8.5, colors='#475569')
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.grid(True, linestyle='--', alpha=0.5)
+                fig.tight_layout()
+                st.pyplot(fig, use_container_width=False)
+                plt.close(fig)
             with col_table:
                 sse_df = pd.DataFrame({"Küme Sayısı (k)": st.session_state.k_degerleri, "SSE": [f"{v:,.2f}" for v in st.session_state.wcss]})
-                st.dataframe(sse_df, use_container_width=True, hide_index=True)
+                st.dataframe(sse_df, use_container_width=True, hide_index=True, height=355)
 
             if st.button("Minimax Algoritmasını Çalıştır", type="primary"):
                 st.session_state.mod1_step = 3
