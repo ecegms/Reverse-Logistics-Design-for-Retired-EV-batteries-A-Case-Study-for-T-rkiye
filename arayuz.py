@@ -414,7 +414,8 @@ def show_module1():
             secilen_iller_str = ", ".join(m["İl"] for m in minimax_res["secilen_merkezler"])
             st.success(
                 f"Dinamik Minimax (p-Center, p={minimax_res['p_kullanilan']}) optimizasyonu tamamlandı! "
-                f"Seçilen merkezler: {secilen_iller_str} (Maksimum Mesafe Z = {minimax_res['minimax_z_km']:,.2f} km)."
+                f"Seçilen merkezler: {secilen_iller_str} "
+                f"(Maksimum Öklid Mesafesi Z = {minimax_res['minimax_z']:,.4f} | ≈ {minimax_res['minimax_z_km']:,.2f} km)."
             )
 
             m_minimax = folium.Map(location=[39.0, 35.0], zoom_start=5.5)

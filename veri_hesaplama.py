@@ -9,13 +9,13 @@ Bu modülde hiçbir sabitlenmiş (hardcoded) il sonucu, il sayısı veya tesis s
 
 from __future__ import annotations
 
+from itertools import combinations
 import math
 import unicodedata
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-import pulp
 from sklearn.cluster import KMeans
 
 
@@ -578,166 +578,21 @@ def dinamik_kmeans_ve_dirsek(
 # ==========================================
 # 3. DİNAMİK MİNİMAX / p-CENTER MODELİ (HAKIMI, 1964; 1965)
 # ==========================================
-def _pulp_degisken_ekle(
-    model: pulp.LpProblem,
-    name: str,
-    lowBound: Optional[float] = None,
-    upBound: Optional[float] = None,
-    cat: str = "Continuous",
-):
-    """PuLP 4.x (model.add_variable) ve PuLP 2.x/3.x (pulp.LpVariable) uyumlu değişken tanımı."""
-    if hasattr(model, "add_variable"):
-        return model.add_variable(name, lowBound=lowBound, upBound=upBound, cat=cat)
-    return pulp.LpVariable(name, lowBound=lowBound, upBound=upBound, cat=cat)
-
-
-def _pulp_uygun_cozucu_al():
-    """Kurulu PuLP sürümüne (3.x veya 4.x) uygun kullanılabilir çözücüyü seçer."""
-    if hasattr(pulp, "PULP_CBC_CMD"):
-        cozucu = pulp.PULP_CBC_CMD(msg=False)
-        if cozucu.available():
-            return cozucu
-    if hasattr(pulp, "COIN_CMD"):
-        try:
-            cozucu = pulp.COIN_CMD(msg=False, gapRel=0.0, gapAbs=0.0)
-        except TypeError:
-            cozucu = pulp.COIN_CMD(msg=False)
-        if cozucu.available():
-            return cozucu
-    if hasattr(pulp, "listSolvers") and hasattr(pulp, "getSolver"):
-        for ad in pulp.listSolvers(onlyAvailable=True):
-            try:
-                cozucu = pulp.getSolver(ad, msg=False)
-            except Exception:
-                try:
-                    cozucu = pulp.getSolver(ad)
-                except Exception:
-                    continue
-            if cozucu is not None and cozucu.available():
-                return cozucu
-    return None
-
-
-def _pulp_durum_metni(sonuc: Any) -> str:
-    """PuLP 4.x (LpSolveStats) ve PuLP 2.x/3.x (int durum kodu) için standart durum metni."""
-    if hasattr(sonuc, "status_str"):
-        return str(sonuc.status_str)
-    lp_status = getattr(pulp, "LpStatus", None)
-    if lp_status is not None and sonuc in lp_status:
-        return str(lp_status[sonuc])
-    return str(sonuc)
-
-
-def _pulp_cozum_optimal_mi(sonuc: Any) -> bool:
-    """PuLP 3.x ve 4.x çözüm sonucunun kesin optimal (veya sıfır/ihmal edilebilir boşluklu) olduğunu doğrular."""
-    durum = _pulp_durum_metni(sonuc)
-    if durum == "Optimal":
-        return True
-    if durum == "GapLimit" and getattr(sonuc, "has_solution", False):
-        gap_abs = getattr(sonuc, "gap_abs", None)
-        return gap_abs is None or abs(float(gap_abs)) <= 1e-4
-    return False
-
-
-def _scipy_milp_p_center_coz(dist_mat: np.ndarray, p_eff: int) -> List[int]:
-    """
-    PuLP 4.x ortamında harici CBC çözücüsü kurulu değilse, scikit-learn ile birlikte
-    gelen SciPy HiGHS MILP çözücüsüyle aynı 2 aşamalı Hakimi p-Center modelini çözer.
-    """
-    from scipy.optimize import Bounds, LinearConstraint, milp
-
-    k = dist_mat.shape[0]
-    z_idx = k + k * k
-    n_vars = z_idx + 1
-
-    integrality = np.ones(n_vars, dtype=int)
-    integrality[z_idx] = 0
-
-    lb_vars = np.zeros(n_vars, dtype=float)
-    ub_vars = np.ones(n_vars, dtype=float)
-    ub_vars[z_idx] = np.inf
-
-    # Kısıt satırları: 1 (sum y == p_eff) + k (sum_v x_uv == 1) + k (minimax) + k*k (x_uv <= y_v)
-    n_rows = 1 + 2 * k + k * k
-    A = np.zeros((n_rows, n_vars), dtype=float)
-    lb_c = np.full(n_rows, -np.inf, dtype=float)
-    ub_c = np.zeros(n_rows, dtype=float)
-
-    row = 0
-    # sum_v y_v == p_eff
-    A[row, :k] = 1.0
-    lb_c[row] = float(p_eff)
-    ub_c[row] = float(p_eff)
-    row += 1
-
-    # sum_v x_{u,v} == 1
-    for u in range(k):
-        start = k + u * k
-        A[row, start : start + k] = 1.0
-        lb_c[row] = 1.0
-        ub_c[row] = 1.0
-        row += 1
-
-    # sum_v d_{u,v} * x_{u,v} - Z <= 0
-    for u in range(k):
-        start = k + u * k
-        A[row, start : start + k] = dist_mat[u, :]
-        A[row, z_idx] = -1.0
-        ub_c[row] = 0.0
-        row += 1
-
-    # x_{u,v} - y_v <= 0
-    for u in range(k):
-        for v in range(k):
-            A[row, k + u * k + v] = 1.0
-            A[row, v] = -1.0
-            ub_c[row] = 0.0
-            row += 1
-
-    constraints = LinearConstraint(A, lb_c, ub_c)
-
-    # Aşama 1: min Z
-    c1 = np.zeros(n_vars, dtype=float)
-    c1[z_idx] = 1.0
-    res1 = milp(
-        c=c1,
-        integrality=integrality,
-        bounds=Bounds(lb_vars, ub_vars),
-        constraints=constraints,
-    )
-    if not res1.success or res1.x is None:
-        raise RuntimeError(f"Minimax (p-Center) modeli optimal çözülemedi: {res1.message}")
-
-    z_star = float(res1.x[z_idx])
-
-    # Aşama 2: Z <= Z* + 1e-6 altında toplam atama mesafesi ile deterministik eşitlik kırıcı
-    ub_vars_stage2 = ub_vars.copy()
-    ub_vars_stage2[z_idx] = z_star + 1e-6
-    c2 = np.zeros(n_vars, dtype=float)
-    c2[k:z_idx] = dist_mat.reshape(-1)
-    res2 = milp(
-        c=c2,
-        integrality=integrality,
-        bounds=Bounds(lb_vars, ub_vars_stage2),
-        constraints=constraints,
-    )
-    sol = res2.x if (res2.success and res2.x is not None) else res1.x
-    return [v for v in range(k) if round(float(sol[v])) == 1]
-
-
 def dinamik_minimax_p_center(
     isleme_merkezleri: Sequence[Dict[str, Any]],
     p: int = 2,
 ) -> Dict[str, Any]:
     """
     K-Means'ten dinamik olarak üretilen k adet İşleme Merkezi üzerinde
-    Hakimi (1964; 1965) kesin p-Center (Minimax) optimizasyonunu çözer.
+    Hakimi (1964; 1965) kesin p-Center (Minimax) optimizasyonunu yalnızca
+    standart Python (`itertools.combinations`) ve `numpy` kullanarak çözer.
 
-    Amaç: Her işleme merkezinin kendisine en yakın seçili p tesise olan
-    maksimum mesafesini (Z) minimize etmek (min Z).
+    Amaç: k adet işleme merkezi arasındaki ikili Öklid mesafe matrisi üzerinde,
+    her işleme merkezinin kendisine en yakın seçili p tesise olan maksimum
+    mesafesini (Z) minimize eden kesin optimum kombinasyonu bulmak (min Z).
     (p-Median olan toplam mesafe minimizasyonu ile karıştırılmaz; yalnızca
-    aynı optimal Z* değerini veren çözümler arasında deterministik eşitlik
-    kırıcı olarak ikinci aşama uygulanır.)
+    birebir aynı optimal Z* değerini veren kombinasyonlar arasında deterministik
+    eşitlik kırıcı uygulanır.)
     """
     if not isleme_merkezleri:
         raise ValueError("Minimax (p-Center) için en az 1 aday işleme merkezi gereklidir.")
@@ -767,98 +622,69 @@ def dinamik_minimax_p_center(
         raise ValueError("Seçilecek tesis sayısı (p) en az 1 olmalıdır.")
     p_eff = min(p_istenen, k)
 
-    # Dinamik k x k ikili Haversine mesafe matrisi (km)
+    # Dinamik k x k ikili Öklid mesafe matrisi ((Lat, Lon) koordinatları üzerinden)
     iller = [a["İl"] for a in adaylar]
-    dist_mat = np.zeros((k, k), dtype=float)
-    for u in range(k):
-        for v in range(u + 1, k):
-            d_uv = haversine_km(
-                adaylar[u]["Lat"], adaylar[u]["Lon"],
-                adaylar[v]["Lat"], adaylar[v]["Lon"],
-            )
-            dist_mat[u, v] = d_uv
-            dist_mat[v, u] = d_uv
+    coords = np.array([[a["Lat"], a["Lon"]] for a in adaylar], dtype=float)
+    fark = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+    dist_mat = np.sqrt(np.sum(fark ** 2, axis=-1))
 
     mesafe_df = pd.DataFrame(
-        np.round(dist_mat, 2), index=iller, columns=iller
+        np.round(dist_mat, 4), index=iller, columns=iller
     )
 
-    if p_eff == k:
-        secilen_indeksler = list(range(k))
-    else:
-        solver = _pulp_uygun_cozucu_al()
-        if solver is not None:
-            # Aşama 1: Kesin p-Center (min Z)
-            model = pulp.LpProblem("Dinamik_Minimax_p_Center", pulp.LpMinimize)
-            # PuLP 3.x ve 4.x uyumlu 0-1 Integer ve sonlu üst sınırlı sürekli Z tanımları
-            z_ust_sinir = float(np.max(dist_mat)) + 1.0
-            y = {
-                v: _pulp_degisken_ekle(model, f"y_{v}", lowBound=0, upBound=1, cat="Integer")
-                for v in range(k)
-            }
-            x = {
-                (u, v): _pulp_degisken_ekle(model, f"x_{u}_{v}", lowBound=0, upBound=1, cat="Integer")
-                for u in range(k)
-                for v in range(k)
-            }
-            Z = _pulp_degisken_ekle(model, "Z_max", lowBound=0, upBound=z_ust_sinir, cat="Continuous")
+    # Kesin (exact) p-Center araması: tüm C(k, p_eff) kombinasyonları tara
+    en_iyi_kombinasyon: Optional[Tuple[int, ...]] = None
+    en_iyi_z = float("inf")
+    en_iyi_toplam = float("inf")
+    en_iyi_isim_anahtari: Optional[Tuple[str, ...]] = None
 
-            model += Z, "Minimax_Maksimum_Mesafe"
-            model += pulp.lpSum(y[v] for v in range(k)) == p_eff, "Tesis_Sayisi_p"
+    for comb in combinations(range(k), p_eff):
+        en_yakin_mesafeler = np.min(dist_mat[:, comb], axis=1)
+        z_degeri = float(np.max(en_yakin_mesafeler))
+        toplam_mesafe = float(np.sum(en_yakin_mesafeler))
+        isim_anahtari = tuple(sorted(iller[v] for v in comb))
 
-            for u in range(k):
-                model += pulp.lpSum(x[(u, v)] for v in range(k)) == 1, f"Atama_{u}"
-                model += (
-                    pulp.lpSum(dist_mat[u, v] * x[(u, v)] for v in range(k)) <= Z,
-                    f"Minimax_Kisit_{u}",
-                )
-                for v in range(k):
-                    model += x[(u, v)] <= y[v], f"Acik_Tesis_{u}_{v}"
+        if z_degeri < en_iyi_z - 1e-12:
+            en_iyi_z = z_degeri
+            en_iyi_toplam = toplam_mesafe
+            en_iyi_isim_anahtari = isim_anahtari
+            en_iyi_kombinasyon = comb
+        elif abs(z_degeri - en_iyi_z) <= 1e-12:
+            # Z* optimalitesini bozmadan deterministik eşitlik kırıcı
+            if toplam_mesafe < en_iyi_toplam - 1e-12 or (
+                abs(toplam_mesafe - en_iyi_toplam) <= 1e-12
+                and (en_iyi_isim_anahtari is None or isim_anahtari < en_iyi_isim_anahtari)
+            ):
+                en_iyi_z = min(en_iyi_z, z_degeri)
+                en_iyi_toplam = toplam_mesafe
+                en_iyi_isim_anahtari = isim_anahtari
+                en_iyi_kombinasyon = comb
 
-            status1 = model.solve(solver)
-            if not _pulp_cozum_optimal_mi(status1):
-                durum1 = _pulp_durum_metni(status1)
-                raise RuntimeError(f"Minimax (p-Center) modeli optimal çözülemedi: {durum1}")
+    if en_iyi_kombinasyon is None or len(en_iyi_kombinasyon) != p_eff:
+        raise RuntimeError("Minimax (p-Center) için geçerli kombinasyon bulunamadı.")
 
-            z_star = float(pulp.value(Z))
-            secilen_indeksler = [
-                v for v in range(k) if round(float(pulp.value(y[v]) or 0.0)) == 1
-            ]
+    secilen_indeksler = list(en_iyi_kombinasyon)
 
-            # Aşama 2: Z* optimalitesini kesinlikle bozmadan eşitlik kırıcı (lexicographic minimax)
-            try:
-                model += Z <= z_star + 1e-6, "Optimal_Z_Sabitleme"
-                model.setObjective(
-                    pulp.lpSum(dist_mat[u, v] * x[(u, v)] for u in range(k) for v in range(k))
-                )
-                status2 = model.solve(solver)
-                if _pulp_cozum_optimal_mi(status2):
-                    asama2_indeksler = [
-                        v for v in range(k) if round(float(pulp.value(y[v]) or 0.0)) == 1
-                    ]
-                    if len(asama2_indeksler) == p_eff:
-                        secilen_indeksler = asama2_indeksler
-            except Exception:
-                # Güvenlik geri dönüşü: 1. aşama optimal çözümü zaten geçerlidir
-                pass
-        else:
-            secilen_indeksler = _scipy_milp_p_center_coz(dist_mat, p_eff)
-
-    if len(secilen_indeksler) != p_eff:
-        raise RuntimeError("Minimax çözümünde seçilen tesis sayısı p ile uyuşmuyor.")
-
-    # Bağımsız matematiksel doğrulama: her işleme merkezinin en yakın seçili tesise mesafesi
+    # Her işleme merkezinin kendisine en yakın seçili tesise atanması ve Z doğrulaması
     atamalar: List[Dict[str, Any]] = []
-    gercek_max_mesafe = 0.0
+    gercek_max_oklid = 0.0
+    gercek_max_km = 0.0
     for u in range(k):
         en_yakin_v = min(secilen_indeksler, key=lambda v: (dist_mat[u, v], iller[v]))
-        mesafe_km = float(dist_mat[u, en_yakin_v])
-        if mesafe_km > gercek_max_mesafe:
-            gercek_max_mesafe = mesafe_km
+        mesafe_oklid = float(dist_mat[u, en_yakin_v])
+        mesafe_km = haversine_km(
+            adaylar[u]["Lat"], adaylar[u]["Lon"],
+            adaylar[en_yakin_v]["Lat"], adaylar[en_yakin_v]["Lon"],
+        )
+        if mesafe_oklid > gercek_max_oklid:
+            gercek_max_oklid = mesafe_oklid
+        if mesafe_km > gercek_max_km:
+            gercek_max_km = mesafe_km
         atamalar.append(
             {
                 "İşleme Merkezi": iller[u],
                 "Atanan Tesis": iller[en_yakin_v],
+                "Mesafe (Öklid)": round(mesafe_oklid, 4),
                 "Mesafe (km)": round(mesafe_km, 2),
             }
         )
@@ -881,7 +707,8 @@ def dinamik_minimax_p_center(
         "aday_sayisi_k": k,
         "p_istenen": p_istenen,
         "p_kullanilan": p_eff,
-        "minimax_z_km": round(gercek_max_mesafe, 4),
+        "minimax_z": round(gercek_max_oklid, 4),
+        "minimax_z_km": round(gercek_max_km, 4),
         "secilen_merkezler": secilen_merkezler,
         "atamalar": atamalar,
         "mesafe_matrisi": mesafe_df,
