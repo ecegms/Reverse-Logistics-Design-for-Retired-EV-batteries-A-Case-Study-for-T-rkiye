@@ -27,23 +27,286 @@ from veri_hesaplama import (
 st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
 
 # ==========================================
-# GÖRSEL TASARIM (CSS INJECTION)
+# GÖRSEL TASARIM (GLOBAL TEMA CSS)
 # ==========================================
-custom_css = """
-<style>
-div[data-testid="stButton"] > button[kind="primary"] {
-    background-color: #2F70AF !important;
-    color: #ffffff !important;
-    border-radius: 10px !important;
-    border: none !important;
-    font-weight: 600 !important;
-}
-div[data-testid="stButton"] > button[kind="primary"]:hover {
-    background-color: #1A3E62 !important;
-}
-</style>
-"""
-st.markdown(custom_css, unsafe_allow_html=True)
+def apply_global_theme():
+    global_css = """
+    <style>
+    /* Genel sayfa ve üst çubuk zemini (Açık gri-beyaz kurumsal tema) */
+    .stApp,
+    [data-testid="stAppViewContainer"] {
+        background-color: #F5F7FA !important;
+        color: #1E293B !important;
+    }
+    [data-testid="stHeader"] {
+        background-color: #F5F7FA !important;
+    }
+
+    /* Ana içerik başlık ve etiket kontrastı (sidebar hariç) */
+    [data-testid="stMain"] h1,
+    [data-testid="stMain"] h2,
+    [data-testid="stMain"] h3,
+    [data-testid="stMain"] h4,
+    .main h1,
+    .main h2,
+    .main h3,
+    .main h4 {
+        color: #1E293B !important;
+    }
+    [data-testid="stMain"] label,
+    [data-testid="stMain"] [data-testid="stWidgetLabel"] p,
+    .main label {
+        color: #1E293B !important;
+        font-weight: 500 !important;
+    }
+    [data-testid="stMain"] hr,
+    .main hr {
+        border-color: #E2E8F0 !important;
+    }
+
+    /* Birincil (Primary) butonlar: Kurumsal Mavi + Beyaz Yazı */
+    div[data-testid="stButton"] > button[kind="primary"],
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"],
+    div[data-testid="stButton"] > button[data-testid="baseButton-primary"],
+    div[data-testid="stFormSubmitButton"] > button[kind="primary"],
+    div[data-testid="stFormSubmitButton"] > button[data-testid="stBaseButton-primary"],
+    div[data-testid="stFormSubmitButton"] > button[data-testid="baseButton-primary"] {
+        background-color: #2B6CB0 !important;
+        color: #FFFFFF !important;
+        border: 1px solid #245B93 !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 2px 6px rgba(43, 108, 176, 0.18) !important;
+        transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease !important;
+    }
+    div[data-testid="stButton"] > button[kind="primary"] p,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"] p,
+    div[data-testid="stButton"] > button[data-testid="baseButton-primary"] p,
+    div[data-testid="stFormSubmitButton"] > button[kind="primary"] p,
+    div[data-testid="stFormSubmitButton"] > button[data-testid="stBaseButton-primary"] p,
+    div[data-testid="stFormSubmitButton"] > button[data-testid="baseButton-primary"] p {
+        color: #FFFFFF !important;
+    }
+    div[data-testid="stButton"] > button[kind="primary"]:hover,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"]:hover,
+    div[data-testid="stButton"] > button[data-testid="baseButton-primary"]:hover,
+    div[data-testid="stFormSubmitButton"] > button[kind="primary"]:hover,
+    div[data-testid="stFormSubmitButton"] > button[data-testid="stBaseButton-primary"]:hover,
+    div[data-testid="stFormSubmitButton"] > button[data-testid="baseButton-primary"]:hover {
+        background-color: #245B93 !important;
+        border-color: #1A3E62 !important;
+        box-shadow: 0 4px 12px rgba(36, 91, 147, 0.26) !important;
+    }
+
+    /* İkincil (Secondary) butonlar: Beyaz Zemin + Koyu Lacivert/Mavi Çerçeve ve Yazı */
+    div[data-testid="stButton"] > button[kind="secondary"],
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"],
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"],
+    div[data-testid="stFormSubmitButton"] > button[kind="secondary"],
+    div[data-testid="stFormSubmitButton"] > button[data-testid="stBaseButton-secondary"],
+    div[data-testid="stFormSubmitButton"] > button[data-testid="baseButton-secondary"] {
+        background-color: #FFFFFF !important;
+        color: #1E293B !important;
+        border: 1.5px solid #2B6CB0 !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 1px 3px rgba(30, 41, 59, 0.07) !important;
+        transition: all 0.18s ease !important;
+    }
+    div[data-testid="stButton"] > button[kind="secondary"] p,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"] p,
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"] p {
+        color: #1E293B !important;
+        font-weight: 600 !important;
+        margin: 0 !important;
+    }
+    div[data-testid="stButton"] > button[kind="secondary"]:hover,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"]:hover,
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"]:hover {
+        background-color: #EBF4FF !important;
+        color: #1E3A8A !important;
+        border-color: #1E40AF !important;
+        box-shadow: 0 4px 10px rgba(43, 108, 176, 0.15) !important;
+    }
+    div[data-testid="stButton"] > button[kind="secondary"]:hover p,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"]:hover p,
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"]:hover p {
+        color: #1E3A8A !important;
+    }
+
+    /* Form giriş kutuları, sayısal alanlar, selectbox ve multiselect */
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="base-input"],
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        border-color: #CBD5E1 !important;
+        color: #1E293B !important;
+        border-radius: 8px !important;
+    }
+    div[data-baseweb="input"] input,
+    div[data-baseweb="select"] input {
+        color: #1E293B !important;
+    }
+    div[data-baseweb="input"]:focus-within > div,
+    div[data-baseweb="select"]:focus-within > div {
+        border-color: #2B6CB0 !important;
+        box-shadow: 0 0 0 2px rgba(43, 108, 176, 0.18) !important;
+    }
+    [data-testid="stNumberInputStepDown"],
+    [data-testid="stNumberInputStepUp"] {
+        background-color: #F8FAFC !important;
+        color: #1E293B !important;
+        border-color: #E2E8F0 !important;
+    }
+    /* Multiselect etiketleri: Kırmızı yerine Kurumsal Mavi */
+    span[data-baseweb="tag"] {
+        background-color: #2B6CB0 !important;
+        color: #FFFFFF !important;
+        border-radius: 6px !important;
+    }
+    span[data-baseweb="tag"] span,
+    span[data-baseweb="tag"] svg {
+        color: #FFFFFF !important;
+        fill: #FFFFFF !important;
+    }
+
+    /* Slider bileşenleri: Kurumsal Mavi */
+    [data-testid="stSlider"] [role="slider"] {
+        background-color: #2B6CB0 !important;
+        border: 2px solid #FFFFFF !important;
+        box-shadow: 0 1px 4px rgba(30, 41, 59, 0.25) !important;
+    }
+    [data-testid="stSlider"] [data-testid="stSliderThumbValue"] {
+        color: #2B6CB0 !important;
+        font-weight: 600 !important;
+    }
+
+    /* Dosya yükleme alanı (st.file_uploader) */
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: #FFFFFF !important;
+        border: 1.5px dashed #94A3B8 !important;
+        border-radius: 12px !important;
+        color: #1E293B !important;
+    }
+    [data-testid="stFileUploaderDropzone"] small,
+    [data-testid="stFileUploaderDropzone"] span {
+        color: #475569 !important;
+    }
+    [data-testid="stFileUploaderDropzone"] button {
+        background-color: #F8FAFC !important;
+        color: #2B6CB0 !important;
+        border: 1px solid #2B6CB0 !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+    }
+    [data-testid="stFileUploaderDropzone"] button:hover {
+        background-color: #EBF4FF !important;
+    }
+
+    /* Açılır paneller (st.expander) */
+    [data-testid="stExpander"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+    }
+    [data-testid="stExpander"] summary {
+        background-color: #F8FAFC !important;
+        color: #1E293B !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
+    }
+    [data-testid="stExpander"] summary:hover {
+        color: #2B6CB0 !important;
+    }
+
+    /* Sekmeler (st.tabs): Kurumsal Mavi aktif vurgu */
+    button[data-baseweb="tab"] {
+        color: #475569 !important;
+        font-weight: 600 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #2B6CB0 !important;
+        font-weight: 700 !important;
+    }
+    div[data-baseweb="tab-highlight"] {
+        background-color: #2B6CB0 !important;
+    }
+    div[data-baseweb="tab-border"] {
+        background-color: #E2E8F0 !important;
+    }
+
+    /* Metrikler (st.metric) ve Tablolar (st.dataframe) */
+    [data-testid="stMetric"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 12px !important;
+        padding: 14px 16px !important;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+    }
+    [data-testid="stMetricLabel"] p {
+        color: #475569 !important;
+        font-weight: 600 !important;
+    }
+    [data-testid="stMetricValue"] {
+        color: #1E293B !important;
+    }
+    [data-testid="stDataFrame"] {
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 10px !important;
+        overflow: hidden !important;
+    }
+
+    /* Bilgi ve durum kutuları (st.info / st.success / st.warning / st.error) */
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]),
+    [data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]) {
+        background-color: #EBF4FF !important;
+        border: 1px solid #BFDBFE !important;
+        border-radius: 10px !important;
+        color: #1E40AF !important;
+    }
+    [data-testid="stAlertContentInfo"],
+    [data-testid="stAlertContentInfo"] p {
+        color: #1E40AF !important;
+    }
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]),
+    [data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]) {
+        background-color: #ECFDF5 !important;
+        border: 1px solid #A7F3D0 !important;
+        border-radius: 10px !important;
+        color: #065F46 !important;
+    }
+    [data-testid="stAlertContentSuccess"],
+    [data-testid="stAlertContentSuccess"] p {
+        color: #065F46 !important;
+    }
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]),
+    [data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]) {
+        background-color: #FFFBEB !important;
+        border: 1px solid #FDE68A !important;
+        border-radius: 10px !important;
+        color: #92400E !important;
+    }
+    [data-testid="stAlertContentWarning"],
+    [data-testid="stAlertContentWarning"] p {
+        color: #92400E !important;
+    }
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]),
+    [data-testid="stAlert"]:has([data-testid="stAlertContentError"]) {
+        background-color: #FEF2F2 !important;
+        border: 1px solid #FECACA !important;
+        border-radius: 10px !important;
+        color: #991B1B !important;
+    }
+    [data-testid="stAlertContentError"],
+    [data-testid="stAlertContentError"] p {
+        color: #991B1B !important;
+    }
+    </style>
+    """
+    st.markdown(global_css, unsafe_allow_html=True)
+
+apply_global_theme()
 
 # ==========================================
 # VARSAYILAN ÖRNEK EV VERİSİ
@@ -223,83 +486,78 @@ def show_login():
         [data-testid="stSidebarCollapsedControl"] {
             display: none !important;
         }
-        div[data-testid="stFormSubmitButton"] > button[kind="primary"],
-        div[data-testid="stFormSubmitButton"] > button[data-testid="stBaseButton-primary"],
-        div[data-testid="stFormSubmitButton"] > button[data-testid="baseButton-primary"] {
-            background-color: #2F70AF !important;
-            color: #FFFFFF !important;
-            border-radius: 10px !important;
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 16px !important;
+            padding: 20px 24px 24px 24px !important;
+            box-shadow: 0 10px 28px rgba(30, 41, 59, 0.08) !important;
+        }
+        [data-testid="stForm"] {
             border: none !important;
-            font-weight: 600 !important;
-        }
-        div[data-testid="stFormSubmitButton"] > button[kind="primary"]:hover,
-        div[data-testid="stFormSubmitButton"] > button[data-testid="stBaseButton-primary"]:hover,
-        div[data-testid="stFormSubmitButton"] > button[data-testid="baseButton-primary"]:hover {
-            background-color: #1A3E62 !important;
-        }
-        button[data-baseweb="tab"][aria-selected="true"] {
-            color: #2F70AF !important;
-            border-bottom-color: #2F70AF !important;
+            padding: 8px 0 0 0 !important;
+            background: transparent !important;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
-    st.markdown("<h1 style='text-align: center;'>EV Batarya Tersine Lojistik Ağı KDS</h1>", unsafe_allow_html=True)
-    st.markdown("<h4 style='text-align: center; opacity: 0.7;'>Sisteme Giriş Yapınız veya Yeni Hesap Oluşturunuz</h4>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #1E293B; font-weight: 800; letter-spacing: -0.4px; margin-bottom: 8px;'>EV Batarya Tersine Lojistik Ağı KDS</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #475569; font-size: 16px; margin-bottom: 28px;'>Sisteme Giriş Yapınız veya Yeni Hesap Oluşturunuz</p>", unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 1.2, 1])
+    col1, col2, col3 = st.columns([1, 1.25, 1])
     with col2:
-        tab_giris, tab_kayit = st.tabs(["Giriş Yap", "Kayıt Ol"])
+        with st.container(border=True):
+            tab_giris, tab_kayit = st.tabs(["Giriş Yap", "Kayıt Ol"])
 
-        with tab_giris:
-            with st.form("login_form"):
-                username = st.text_input("Kullanıcı Adı")
-                password = st.text_input("Şifre", type="password")
-                submit = st.form_submit_button("Giriş Yap", type="primary", use_container_width=True)
+            with tab_giris:
+                with st.form("login_form"):
+                    username = st.text_input("Kullanıcı Adı")
+                    password = st.text_input("Şifre", type="password")
+                    submit = st.form_submit_button("Giriş Yap", type="primary", use_container_width=True)
 
-                if submit:
-                    if not username.strip() or not password:
-                        st.warning("Lütfen kullanıcı adı ve şifre alanlarını doldurunuz.")
-                    else:
-                        try:
-                            kullanici = kullanici_dogrula(username, password)
-                            if kullanici is not None:
-                                st.session_state.logged_in = True
-                                st.session_state.current_view = 'dashboard'
-                                st.session_state.aktif_kullanici = kullanici
-                                st.rerun()
-                            else:
-                                st.error("Hatalı kullanıcı adı veya şifre!")
-                        except Exception as e:
-                            st.error(f"Giriş doğrulaması sırasında hata oluştu: {e}")
-
-        with tab_kayit:
-            with st.form("register_form"):
-                reg_ad_soyad = st.text_input("Ad Soyad")
-                reg_username = st.text_input("Kullanıcı Adı", key="reg_username_input")
-                reg_password = st.text_input("Şifre", type="password", key="reg_password_input")
-                reg_password_confirm = st.text_input("Şifre Tekrarı", type="password", key="reg_password_confirm_input")
-                reg_submit = st.form_submit_button("Kayıt Ol", type="primary", use_container_width=True)
-
-                if reg_submit:
-                    if (
-                        not reg_ad_soyad.strip()
-                        or not reg_username.strip()
-                        or not reg_password
-                        or not reg_password_confirm
-                    ):
-                        st.warning("Lütfen tüm alanları doldurunuz.")
-                    elif len(reg_password) < 6:
-                        st.warning("Şifre en az 6 karakter olmalıdır.")
-                    elif reg_password != reg_password_confirm:
-                        st.error("Girilen şifreler birbiriyle eşleşmiyor!")
-                    else:
-                        basarili, mesaj = kullanici_kaydet(reg_ad_soyad, reg_username, reg_password)
-                        if basarili:
-                            st.success(mesaj)
+                    if submit:
+                        if not username.strip() or not password:
+                            st.warning("Lütfen kullanıcı adı ve şifre alanlarını doldurunuz.")
                         else:
-                            st.error(mesaj)
+                            try:
+                                kullanici = kullanici_dogrula(username, password)
+                                if kullanici is not None:
+                                    st.session_state.logged_in = True
+                                    st.session_state.current_view = 'dashboard'
+                                    st.session_state.aktif_kullanici = kullanici
+                                    st.rerun()
+                                else:
+                                    st.error("Hatalı kullanıcı adı veya şifre!")
+                            except Exception as e:
+                                st.error(f"Giriş doğrulaması sırasında hata oluştu: {e}")
+
+            with tab_kayit:
+                with st.form("register_form"):
+                    reg_ad_soyad = st.text_input("Ad Soyad")
+                    reg_username = st.text_input("Kullanıcı Adı", key="reg_username_input")
+                    reg_password = st.text_input("Şifre", type="password", key="reg_password_input")
+                    reg_password_confirm = st.text_input("Şifre Tekrarı", type="password", key="reg_password_confirm_input")
+                    reg_submit = st.form_submit_button("Kayıt Ol", type="primary", use_container_width=True)
+
+                    if reg_submit:
+                        if (
+                            not reg_ad_soyad.strip()
+                            or not reg_username.strip()
+                            or not reg_password
+                            or not reg_password_confirm
+                        ):
+                            st.warning("Lütfen tüm alanları doldurunuz.")
+                        elif len(reg_password) < 6:
+                            st.warning("Şifre en az 6 karakter olmalıdır.")
+                        elif reg_password != reg_password_confirm:
+                            st.error("Girilen şifreler birbiriyle eşleşmiyor!")
+                        else:
+                            basarili, mesaj = kullanici_kaydet(reg_ad_soyad, reg_username, reg_password)
+                            if basarili:
+                                st.success(mesaj)
+                            else:
+                                st.error(mesaj)
 
 # ==========================================
 # 2.5 SOL YAN SÜREÇ TAKİP BÖLMESİ (Sidebar)
@@ -473,11 +731,11 @@ def show_dashboard():
     <style>
     .stApp,
     [data-testid="stAppViewContainer"] {
-        background-color: #F2F4F7 !important;
+        background-color: #F5F7FA !important;
         color: #1E293B !important;
     }
     [data-testid="stHeader"] {
-        background-color: #F2F4F7 !important;
+        background-color: #F5F7FA !important;
     }
     [data-testid="stMainBlockContainer"],
     .block-container {
