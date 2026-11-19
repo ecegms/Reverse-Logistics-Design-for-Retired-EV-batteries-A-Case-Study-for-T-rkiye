@@ -400,6 +400,116 @@ def show_module1():
                 sse_df = pd.DataFrame({"Küme Sayısı (k)": st.session_state.k_degerleri, "SSE": [f"{v:,.2f}" for v in st.session_state.wcss]})
                 st.dataframe(sse_df, use_container_width=True, hide_index=True, height=355)
 
+            st.markdown("#### K-Means Küme Merkezleri (Aday İşleme Merkezleri)")
+            try:
+                kmeans_merkezler = st.session_state.get('kmeans_sonuclari', [])
+                if not kmeans_merkezler:
+                    st.warning("Görüntülenecek K-Means küme merkezi bulunamadı.")
+                else:
+                    kume_renkleri = [
+                        "#1D4ED8", "#0F766E", "#7C3AED", "#D97706", "#0284C7",
+                        "#15803D", "#4F46E5", "#B45309", "#0E7490"
+                    ]
+
+                    pareto_koord_bilgi = {}
+                    pareto_df_gorsel = st.session_state.get('pareto_sonuclari')
+                    if pareto_df_gorsel is not None and not pareto_df_gorsel.empty:
+                        ozel_koord_var = "Enlem" in pareto_df_gorsel.columns and "Boylam" in pareto_df_gorsel.columns
+                        for _, prow in pareto_df_gorsel.iterrows():
+                            p_il = il_adini_normalize_et(prow['İl'])
+                            if not p_il:
+                                continue
+                            if ozel_koord_var and pd.notna(prow['Enlem']) and pd.notna(prow['Boylam']):
+                                p_lat, p_lon = float(prow['Enlem']), float(prow['Boylam'])
+                            elif p_il in IL_KOORDINATLARI:
+                                p_lat, p_lon = IL_KOORDINATLARI[p_il]
+                            else:
+                                continue
+                            p_ev = prow['EV_Sayısı'] if 'EV_Sayısı' in pareto_df_gorsel.columns and pd.notna(prow['EV_Sayısı']) else None
+                            pareto_koord_bilgi[p_il] = (p_lat, p_lon, p_ev)
+
+                    tablo_satirlari = []
+                    m_kmeans = folium.Map(location=[39.0, 35.0], zoom_start=6)
+
+                    # Önce kümeye göre renklendirilmiş Pareto şehirlerini (Aday Toplama Merkezleri) çiz
+                    for idx, merkez in enumerate(kmeans_merkezler, start=1):
+                        kume_rengi = kume_renkleri[(idx - 1) % len(kume_renkleri)]
+                        kod = merkez.get("Kod", f"İM-{idx}")
+                        en_yakin_il = il_adini_normalize_et(merkez.get("İl", "")) or "-"
+                        c_lat = float(merkez.get("Centroid_Lat", merkez.get("Lat")))
+                        c_lon = float(merkez.get("Centroid_Lon", merkez.get("Lon")))
+                        atanan_iller = merkez.get("Atanan_İller", [])
+
+                        tablo_satirlari.append({
+                            "Küme No": idx,
+                            "Merkez Kodu": kod,
+                            "Enlem": f"{c_lat:.4f}",
+                            "Boylam": f"{c_lon:.4f}",
+                            "En Yakın İl": en_yakin_il,
+                            "İl Sayısı": int(merkez.get("Küme_Boyutu", len(atanan_iller))),
+                        })
+
+                        for ham_il in atanan_iller:
+                            il_adi = il_adini_normalize_et(ham_il)
+                            if il_adi in pareto_koord_bilgi:
+                                lat, lon, ev_sayisi = pareto_koord_bilgi[il_adi]
+                            elif il_adi in IL_KOORDINATLARI:
+                                lat, lon = IL_KOORDINATLARI[il_adi]
+                                ev_sayisi = None
+                            else:
+                                continue
+
+                            ev_satiri = f"<br><b>EV Sayısı:</b> {ev_sayisi:,.0f}" if ev_sayisi is not None else ""
+                            il_popup_html = (
+                                f"<b>Aday Toplama Merkezi</b><br>"
+                                f"<b>İl:</b> {il_adi}<br>"
+                                f"<b>Küme No:</b> Küme {idx} ({kod})"
+                                f"{ev_satiri}"
+                            )
+                            folium.CircleMarker(
+                                location=[lat, lon],
+                                radius=6,
+                                color="#FFFFFF",
+                                weight=1.5,
+                                fill=True,
+                                fill_color=kume_rengi,
+                                fill_opacity=0.88,
+                                tooltip=f"{il_adi} (Küme {idx} — {kod})",
+                                popup=folium.Popup(il_popup_html, max_width=240),
+                            ).add_to(m_kmeans)
+
+                    # Ardından K-Means tam küme merkezlerini (Aday İşleme Merkezleri) üst katmanda belirgin kırmızı işaretçiyle çiz
+                    for idx, merkez in enumerate(kmeans_merkezler, start=1):
+                        kod = merkez.get("Kod", f"İM-{idx}")
+                        en_yakin_il = il_adini_normalize_et(merkez.get("İl", "")) or "-"
+                        c_lat = float(merkez.get("Centroid_Lat", merkez.get("Lat")))
+                        c_lon = float(merkez.get("Centroid_Lon", merkez.get("Lon")))
+
+                        merkez_popup_html = (
+                            f"<b>K-Means Küme Merkezi ({kod})</b><br>"
+                            f"<b>Küme No:</b> {idx}<br>"
+                            f"<b>Enlem:</b> {c_lat:.6f}<br>"
+                            f"<b>Boylam:</b> {c_lon:.6f}<br>"
+                            f"<b>En Yakın İl:</b> {en_yakin_il}"
+                        )
+                        folium.Marker(
+                            location=[c_lat, c_lon],
+                            tooltip=f"Küme {idx} Merkezi ({kod}) — En Yakın İl: {en_yakin_il}",
+                            popup=folium.Popup(merkez_popup_html, max_width=260),
+                            icon=folium.Icon(color="red", icon="cog"),
+                        ).add_to(m_kmeans)
+
+                    kume_df = pd.DataFrame(tablo_satirlari)
+                    st.dataframe(
+                        kume_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(360, 38 + 35 * len(kume_df)),
+                    )
+                    st_folium(m_kmeans, width=900, height=440, key="map_kmeans_clusters")
+            except Exception as e:
+                st.warning(f"K-Means küme merkezleri görselleştirilirken bir sorun oluştu: {e}")
+
             if st.button("Minimax Algoritmasını Çalıştır", type="primary"):
                 st.session_state.mod1_step = 3
                 st.rerun()
