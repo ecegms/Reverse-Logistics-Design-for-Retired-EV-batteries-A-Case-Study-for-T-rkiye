@@ -530,16 +530,56 @@ def show_module1():
 
             m_minimax = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
 
+            renk_toplama = "#2F70AF"
+            renk_isleme = "#DC2626"
+            renk_ortak = "#F97316"
+
+            harita_noktalari = []
+
             if 'pareto_sonuclari' in st.session_state:
-                for _, row in st.session_state.pareto_sonuclari.iterrows():
+                pareto_df_mm = st.session_state.pareto_sonuclari
+                ozel_koord_mm = "Enlem" in pareto_df_mm.columns and "Boylam" in pareto_df_mm.columns
+                for _, row in pareto_df_mm.iterrows():
                     il_adi = il_adini_normalize_et(row['İl'])
-                    if il_adi in IL_KOORDINATLARI:
-                        lat, lon = IL_KOORDINATLARI[il_adi]
-                        folium.Marker([lat, lon], tooltip=f"Aday Toplama Merkezi: {il_adi}", icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_minimax)
+                    if ozel_koord_mm and pd.notna(row['Enlem']) and pd.notna(row['Boylam']):
+                        lat, lon = float(row['Enlem']), float(row['Boylam'])
+                    elif il_adi in IL_KOORDINATLARI:
+                        lat, lon = float(IL_KOORDINATLARI[il_adi][0]), float(IL_KOORDINATLARI[il_adi][1])
+                    else:
+                        continue
+                    popup_html = (
+                        f"<b>Aday Toplama Merkezi</b><br>"
+                        f"<b>Konum:</b> {il_adi}<br>"
+                        f"<b>Enlem:</b> {lat:.6f}<br>"
+                        f"<b>Boylam:</b> {lon:.6f}"
+                    )
+                    harita_noktalari.append({
+                        "lat": lat,
+                        "lon": lon,
+                        "renk": renk_toplama,
+                        "tooltip": f"Aday Toplama Merkezi: {il_adi}",
+                        "popup": popup_html,
+                    })
 
             if 'kmeans_sonuclari' in st.session_state:
                 for merkez in st.session_state.kmeans_sonuclari:
-                    folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=f"Aday İşleme Merkezi: {merkez['İl']} ({merkez['Kod']})", icon=folium.Icon(color="red", icon="cog")).add_to(m_minimax)
+                    il_adi = il_adini_normalize_et(merkez['İl'])
+                    lat, lon = float(merkez['Lat']), float(merkez['Lon'])
+                    kod = merkez.get('Kod', '')
+                    kod_ek = f" ({kod})" if kod else ""
+                    popup_html = (
+                        f"<b>Aday İşleme Merkezi{kod_ek}</b><br>"
+                        f"<b>Konum:</b> {il_adi}<br>"
+                        f"<b>Enlem:</b> {lat:.6f}<br>"
+                        f"<b>Boylam:</b> {lon:.6f}"
+                    )
+                    harita_noktalari.append({
+                        "lat": lat,
+                        "lon": lon,
+                        "renk": renk_isleme,
+                        "tooltip": f"Aday İşleme Merkezi: {il_adi}{kod_ek}",
+                        "popup": popup_html,
+                    })
 
             for m in minimax_res["secilen_merkezler"]:
                 il_adi = il_adini_normalize_et(m["İl"])
@@ -547,7 +587,7 @@ def show_module1():
                 lon = float(m["Lon"])
                 kod = m.get("Kod", "")
                 kod_ek = f" ({kod})" if kod else ""
-                ortak_bilgi_html = (
+                popup_html = (
                     f"<b>Aday Geri Dönüşüm &amp; İkinci Ömür Merkezi{kod_ek}</b><br>"
                     f"<b>Konum:</b> {il_adi}<br>"
                     f"<b>Enlem:</b> {lat:.6f}<br>"
@@ -557,20 +597,71 @@ def show_module1():
                     f"Modül 2 optimizasyon modelinde belirlenecektir."
                     f"</span>"
                 )
-                folium.Marker(
-                    location=[lat, lon],
-                    tooltip=folium.Tooltip(ortak_bilgi_html, sticky=True),
-                    popup=folium.Popup(ortak_bilgi_html, max_width=310),
-                    icon=folium.Icon(color="orange", icon="star"),
-                    z_index_offset=1000,
-                ).add_to(m_minimax)
+                harita_noktalari.append({
+                    "lat": lat,
+                    "lon": lon,
+                    "renk": renk_ortak,
+                    "tooltip": f"Aday Geri Dönüşüm & İkinci Ömür Merkezi: {il_adi}{kod_ek}",
+                    "popup": popup_html,
+                })
+
+            # Çakışan / çok yakın (< 0.05 derece) noktaları dinamik grupla (yalnızca görsel çizim için)
+            ziyaret = [False] * len(harita_noktalari)
+            offset_yaricap = 0.12
+            yakinlik_esigi = 0.05
+
+            for i in range(len(harita_noktalari)):
+                if ziyaret[i]:
+                    continue
+                grup_indeksler = [i]
+                ziyaret[i] = True
+                kuyruk = [i]
+                while kuyruk:
+                    mevcut = kuyruk.pop(0)
+                    m_lat, m_lon = harita_noktalari[mevcut]["lat"], harita_noktalari[mevcut]["lon"]
+                    for j in range(len(harita_noktalari)):
+                        if not ziyaret[j]:
+                            d_lat = harita_noktalari[j]["lat"] - m_lat
+                            d_lon = harita_noktalari[j]["lon"] - m_lon
+                            if float(np.hypot(d_lat, d_lon)) < yakinlik_esigi:
+                                ziyaret[j] = True
+                                grup_indeksler.append(j)
+                                kuyruk.append(j)
+
+                n_grup = len(grup_indeksler)
+                for sira, nokta_idx in enumerate(grup_indeksler):
+                    nokta = harita_noktalari[nokta_idx]
+                    if n_grup == 1:
+                        d_lat_off, d_lon_off = 0.0, 0.0
+                    elif n_grup == 2:
+                        d_lat_off = 0.0
+                        d_lon_off = -offset_yaricap if sira == 0 else offset_yaricap
+                    else:
+                        aci = (np.pi / 2.0) + (2.0 * np.pi * sira / n_grup)
+                        d_lat_off = float(offset_yaricap * np.sin(aci))
+                        d_lon_off = float(offset_yaricap * np.cos(aci))
+
+                    cizim_lat = nokta["lat"] + d_lat_off
+                    cizim_lon = nokta["lon"] + d_lon_off
+
+                    folium.CircleMarker(
+                        location=[cizim_lat, cizim_lon],
+                        radius=7.5,
+                        color="#FFFFFF",
+                        weight=2,
+                        fill=True,
+                        fill_color=nokta["renk"],
+                        fill_opacity=0.9,
+                        tooltip=folium.Tooltip(nokta["tooltip"], sticky=True),
+                        popup=folium.Popup(nokta["popup"], max_width=310),
+                    ).add_to(m_minimax)
 
             st.markdown(
-                """
+                f"""
                 <div style="display: flex; flex-wrap: wrap; gap: 18px; align-items: center; padding: 8px 14px; margin-bottom: 10px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.35); font-size: 14px;">
-                    <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#38A9DC; margin-right:6px; vertical-align:middle;"></span><b>Mavi:</b> Aday Toplama Merkezleri</span>
-                    <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#D63E2A; margin-right:6px; vertical-align:middle;"></span><b>Kırmızı:</b> Aday İşleme Merkezleri</span>
-                    <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#F69730; margin-right:6px; vertical-align:middle;"></span><b>Turuncu (Yıldız):</b> Aday Geri Dönüşüm / İkinci Ömür Merkezleri (Ortak Aday)</span>
+                    <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_toplama}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Mavi:</b> Aday Toplama Merkezleri</span>
+                    <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_isleme}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Kırmızı:</b> Aday İşleme Merkezleri</span>
+                    <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_ortak}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Turuncu:</b> Aday Geri Dönüşüm / İkinci Ömür Merkezleri (Ortak Aday)</span>
                 </div>
                 """,
                 unsafe_allow_html=True,
