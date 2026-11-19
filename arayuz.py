@@ -347,6 +347,9 @@ def show_module1():
 
             if st.button("K-Means Kümeleme Algoritmasını Çalıştır", type="primary"):
                 st.session_state.mod1_step = 2
+                st.session_state.kmeans_calisti = False
+                if 'minimax_sonuclari' in st.session_state:
+                    del st.session_state['minimax_sonuclari']
                 st.rerun()
         except Exception as e:
             st.error(f"Pareto analizi sırasında hata oluştu: {e}")
@@ -354,7 +357,7 @@ def show_module1():
     if st.session_state.mod1_step >= 2:
         st.divider()
         st.subheader("Adım 3: Dirsek Metodu ve K-Means Kümeleme")
-        if st.button("Dirsek Metodu ve K-Means Algoritmasını Çalıştır", type="primary", key="btn_kmeans"):
+        if not st.session_state.get('kmeans_calisti', False):
             try:
                 pareto_df = st.session_state.pareto_sonuclari
                 kmeans_res = dinamik_kmeans_ve_dirsek(pareto_df, random_state=42)
