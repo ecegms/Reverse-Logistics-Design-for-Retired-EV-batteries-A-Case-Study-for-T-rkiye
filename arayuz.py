@@ -1,3 +1,9 @@
+import hashlib
+import hmac
+import secrets
+import sqlite3
+from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
 import pandas as pd
@@ -94,9 +100,121 @@ def go_to_dashboard():
     st.session_state.current_view = 'dashboard'
 
 # ==========================================
-# 2. GİRİŞ EKRANI (Login)
+# 1.5 KULLANICI VERİTABANI VE GÜVENLİK (SQLite)
+# ==========================================
+KULLANICI_DB_YOLU = Path(__file__).resolve().parent / "kullanicilar.db"
+
+def _sifre_hashle(sifre: str) -> str:
+    salt = secrets.token_hex(16)
+    hash_hex = hashlib.pbkdf2_hmac(
+        "sha256",
+        sifre.encode("utf-8"),
+        salt.encode("utf-8"),
+        100_000,
+    ).hex()
+    return f"{salt}${hash_hex}"
+
+def _sifre_dogrula(sifre: str, kayitli_hash: str) -> bool:
+    if not kayitli_hash or "$" not in kayitli_hash:
+        return False
+    salt, beklenen_hash = kayitli_hash.split("$", 1)
+    hesaplanan_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        sifre.encode("utf-8"),
+        salt.encode("utf-8"),
+        100_000,
+    ).hex()
+    return hmac.compare_digest(hesaplanan_hash, beklenen_hash)
+
+def kullanici_veritabanini_hazirla():
+    with sqlite3.connect(KULLANICI_DB_YOLU) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kullanicilar (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ad_soyad TEXT NOT NULL,
+                kullanici_adi TEXT NOT NULL UNIQUE,
+                sifre_hash TEXT NOT NULL,
+                kayit_tarihi TEXT NOT NULL
+            )
+            """
+        )
+        mevcut_admin = conn.execute(
+            "SELECT 1 FROM kullanicilar WHERE LOWER(kullanici_adi) = LOWER(?)",
+            ("admin",),
+        ).fetchone()
+        if mevcut_admin is None:
+            conn.execute(
+                """
+                INSERT INTO kullanicilar (ad_soyad, kullanici_adi, sifre_hash, kayit_tarihi)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    "Sistem Yöneticisi",
+                    "admin",
+                    _sifre_hashle("proje2026"),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                ),
+            )
+        conn.commit()
+
+def kullanici_kaydet(ad_soyad: str, kullanici_adi: str, sifre: str):
+    temiz_ad = ad_soyad.strip()
+    temiz_kadi = kullanici_adi.strip()
+    try:
+        with sqlite3.connect(KULLANICI_DB_YOLU) as conn:
+            mevcut = conn.execute(
+                "SELECT 1 FROM kullanicilar WHERE LOWER(kullanici_adi) = LOWER(?)",
+                (temiz_kadi,),
+            ).fetchone()
+            if mevcut is not None:
+                return False, "Bu kullanıcı adı zaten kayıtlı."
+
+            conn.execute(
+                """
+                INSERT INTO kullanicilar (ad_soyad, kullanici_adi, sifre_hash, kayit_tarihi)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    temiz_ad,
+                    temiz_kadi,
+                    _sifre_hashle(sifre),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                ),
+            )
+            conn.commit()
+        return True, "Kayıt başarıyla tamamlandı! 'Giriş Yap' sekmesinden hemen giriş yapabilirsiniz."
+    except sqlite3.IntegrityError:
+        return False, "Bu kullanıcı adı zaten kayıtlı."
+    except Exception as e:
+        return False, f"Kayıt sırasında veritabanı hatası oluştu: {e}"
+
+def kullanici_dogrula(kullanici_adi: str, sifre: str):
+    temiz_kadi = kullanici_adi.strip()
+    with sqlite3.connect(KULLANICI_DB_YOLU) as conn:
+        satir = conn.execute(
+            """
+            SELECT id, ad_soyad, kullanici_adi, sifre_hash
+            FROM kullanicilar
+            WHERE LOWER(kullanici_adi) = LOWER(?)
+            """,
+            (temiz_kadi,),
+        ).fetchone()
+    if satir is None:
+        return None
+    if _sifre_dogrula(sifre, satir[3]):
+        return {"id": satir[0], "ad_soyad": satir[1], "kullanici_adi": satir[2]}
+    return None
+
+# ==========================================
+# 2. GİRİŞ EKRANI (Login & Kayıt Ol)
 # ==========================================
 def show_login():
+    try:
+        kullanici_veritabanini_hazirla()
+    except Exception as e:
+        st.error(f"Kullanıcı veritabanı hazırlanırken hata oluştu: {e}")
+
     st.markdown(
         """
         <style>
@@ -105,27 +223,83 @@ def show_login():
         [data-testid="stSidebarCollapsedControl"] {
             display: none !important;
         }
+        div[data-testid="stFormSubmitButton"] > button[kind="primary"],
+        div[data-testid="stFormSubmitButton"] > button[data-testid="stBaseButton-primary"],
+        div[data-testid="stFormSubmitButton"] > button[data-testid="baseButton-primary"] {
+            background-color: #2F70AF !important;
+            color: #FFFFFF !important;
+            border-radius: 10px !important;
+            border: none !important;
+            font-weight: 600 !important;
+        }
+        div[data-testid="stFormSubmitButton"] > button[kind="primary"]:hover,
+        div[data-testid="stFormSubmitButton"] > button[data-testid="stBaseButton-primary"]:hover,
+        div[data-testid="stFormSubmitButton"] > button[data-testid="baseButton-primary"]:hover {
+            background-color: #1A3E62 !important;
+        }
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #2F70AF !important;
+            border-bottom-color: #2F70AF !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
     st.markdown("<h1 style='text-align: center;'>EV Batarya Tersine Lojistik Ağı KDS</h1>", unsafe_allow_html=True)
-    st.markdown("<h4 style='text-align: center; opacity: 0.7;'>Sisteme Giriş Yapınız</h4>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
+    st.markdown("<h4 style='text-align: center; opacity: 0.7;'>Sisteme Giriş Yapınız veya Yeni Hesap Oluşturunuz</h4>", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        with st.form("login_form"):
-            username = st.text_input("Kullanıcı Adı")
-            password = st.text_input("Şifre", type="password")
-            submit = st.form_submit_button("Giriş Yap", use_container_width=True)
-            
-            if submit:
-                if username == "admin" and password == "proje2026":
-                    st.session_state.logged_in = True
-                    st.session_state.current_view = 'dashboard'
-                    st.rerun()
-                else:
-                    st.error("Hatalı kullanıcı adı veya şifre!")
+        tab_giris, tab_kayit = st.tabs(["Giriş Yap", "Kayıt Ol"])
+
+        with tab_giris:
+            with st.form("login_form"):
+                username = st.text_input("Kullanıcı Adı")
+                password = st.text_input("Şifre", type="password")
+                submit = st.form_submit_button("Giriş Yap", type="primary", use_container_width=True)
+
+                if submit:
+                    if not username.strip() or not password:
+                        st.warning("Lütfen kullanıcı adı ve şifre alanlarını doldurunuz.")
+                    else:
+                        try:
+                            kullanici = kullanici_dogrula(username, password)
+                            if kullanici is not None:
+                                st.session_state.logged_in = True
+                                st.session_state.current_view = 'dashboard'
+                                st.session_state.aktif_kullanici = kullanici
+                                st.rerun()
+                            else:
+                                st.error("Hatalı kullanıcı adı veya şifre!")
+                        except Exception as e:
+                            st.error(f"Giriş doğrulaması sırasında hata oluştu: {e}")
+
+        with tab_kayit:
+            with st.form("register_form"):
+                reg_ad_soyad = st.text_input("Ad Soyad")
+                reg_username = st.text_input("Kullanıcı Adı", key="reg_username_input")
+                reg_password = st.text_input("Şifre", type="password", key="reg_password_input")
+                reg_password_confirm = st.text_input("Şifre Tekrarı", type="password", key="reg_password_confirm_input")
+                reg_submit = st.form_submit_button("Kayıt Ol", type="primary", use_container_width=True)
+
+                if reg_submit:
+                    if (
+                        not reg_ad_soyad.strip()
+                        or not reg_username.strip()
+                        or not reg_password
+                        or not reg_password_confirm
+                    ):
+                        st.warning("Lütfen tüm alanları doldurunuz.")
+                    elif len(reg_password) < 6:
+                        st.warning("Şifre en az 6 karakter olmalıdır.")
+                    elif reg_password != reg_password_confirm:
+                        st.error("Girilen şifreler birbiriyle eşleşmiyor!")
+                    else:
+                        basarili, mesaj = kullanici_kaydet(reg_ad_soyad, reg_username, reg_password)
+                        if basarili:
+                            st.success(mesaj)
+                        else:
+                            st.error(mesaj)
 
 # ==========================================
 # 2.5 SOL YAN SÜREÇ TAKİP BÖLMESİ (Sidebar)
