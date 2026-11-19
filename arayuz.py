@@ -354,6 +354,27 @@ def render_progress_sidebar():
     section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {{
         color: #FFFFFF !important;
     }}
+    .kds-brand-card {{
+        background-color: rgba(255, 255, 255, 0.10);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 20px;
+    }}
+    section[data-testid="stSidebar"] .kds-brand-subtitle {{
+        font-size: 11px;
+        letter-spacing: 1.5px;
+        color: rgba(255, 255, 255, 0.78) !important;
+        font-weight: 500;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+    }}
+    section[data-testid="stSidebar"] .kds-brand-title {{
+        font-size: 17px;
+        font-weight: 700;
+        color: #FFFFFF !important;
+        line-height: 1.3;
+    }}
     .kds-sidebar-title {{
         font-size: 1.02rem;
         font-weight: 800;
@@ -424,6 +445,10 @@ def render_progress_sidebar():
         box-shadow: 0 0 8px rgba(229, 57, 53, 0.85);
     }}
     </style>
+    <div class="kds-brand-card">
+        <div class="kds-brand-subtitle">KARAR DESTEK SİSTEMİ</div>
+        <div class="kds-brand-title">EA Batarya Tersine Lojistik Ağı</div>
+    </div>
     <div class="kds-sidebar-title">Süreç Takibi</div>
     <div class="kds-step-list">
         {_item_html('login', 'Login')}
