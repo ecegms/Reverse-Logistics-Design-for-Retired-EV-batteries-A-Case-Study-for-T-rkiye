@@ -541,21 +541,40 @@ def show_module1():
                 for merkez in st.session_state.kmeans_sonuclari:
                     folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=f"Aday İşleme Merkezi: {merkez['İl']} ({merkez['Kod']})", icon=folium.Icon(color="red", icon="cog")).add_to(m_minimax)
 
-            geri_donusum_merkezleri = [
-                (m["İl"], m["Lat"], m["Lon"], m["GDM_Kod"])
-                for m in minimax_res["secilen_merkezler"]
-            ]
-            ikinci_omur_merkezleri = [
-                (m["İl"], m["Lat"], m["Lon"], m["IOM_Kod"])
-                for m in minimax_res["secilen_merkezler"]
-            ]
+            for m in minimax_res["secilen_merkezler"]:
+                il_adi = il_adini_normalize_et(m["İl"])
+                lat = float(m["Lat"])
+                lon = float(m["Lon"])
+                kod = m.get("Kod", "")
+                kod_ek = f" ({kod})" if kod else ""
+                ortak_bilgi_html = (
+                    f"<b>Aday Geri Dönüşüm &amp; İkinci Ömür Merkezi{kod_ek}</b><br>"
+                    f"<b>Konum:</b> {il_adi}<br>"
+                    f"<b>Enlem:</b> {lat:.6f}<br>"
+                    f"<b>Boylam:</b> {lon:.6f}<br>"
+                    f"<span style='font-size: 11px; color: #475569;'>"
+                    f"Kesin tesis türü ataması (Geri Dönüşüm / İkinci Ömür) "
+                    f"Modül 2 optimizasyon modelinde belirlenecektir."
+                    f"</span>"
+                )
+                folium.Marker(
+                    location=[lat, lon],
+                    tooltip=folium.Tooltip(ortak_bilgi_html, sticky=True),
+                    popup=folium.Popup(ortak_bilgi_html, max_width=310),
+                    icon=folium.Icon(color="orange", icon="star"),
+                    z_index_offset=1000,
+                ).add_to(m_minimax)
 
-            for il, lat, lon, kod in geri_donusum_merkezleri:
-                folium.Marker([lat, lon], tooltip=f"Aday Geri Dönüşüm Merkezi: {il} ({kod})", icon=folium.Icon(color="green", icon="recycle")).add_to(m_minimax)
-
-            for il, lat, lon, kod in ikinci_omur_merkezleri:
-                folium.Marker([lat, lon], tooltip=f"Aday İkinci Ömür Merkezi: {il} ({kod})", icon=folium.Icon(color="orange", icon="flash")).add_to(m_minimax)
-
+            st.markdown(
+                """
+                <div style="display: flex; flex-wrap: wrap; gap: 18px; align-items: center; padding: 8px 14px; margin-bottom: 10px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.35); font-size: 14px;">
+                    <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#38A9DC; margin-right:6px; vertical-align:middle;"></span><b>Mavi:</b> Aday Toplama Merkezleri</span>
+                    <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#D63E2A; margin-right:6px; vertical-align:middle;"></span><b>Kırmızı:</b> Aday İşleme Merkezleri</span>
+                    <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#F69730; margin-right:6px; vertical-align:middle;"></span><b>Turuncu (Yıldız):</b> Aday Geri Dönüşüm / İkinci Ömür Merkezleri (Ortak Aday)</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             st_folium(m_minimax, width=900, height=450, key="map_minimax")
         except Exception as e:
             st.error(f"Minimax (p-Center) hesaplaması sırasında hata oluştu: {e}")
