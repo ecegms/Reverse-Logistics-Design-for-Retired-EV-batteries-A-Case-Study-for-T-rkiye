@@ -97,6 +97,18 @@ def go_to_dashboard():
 # 2. GİRİŞ EKRANI (Login)
 # ==========================================
 def show_login():
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"],
+        [data-testid="collapsedControl"],
+        [data-testid="stSidebarCollapsedControl"] {
+            display: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown("<h1 style='text-align: center;'>EV Batarya Tersine Lojistik Ağı KDS</h1>", unsafe_allow_html=True)
     st.markdown("<h4 style='text-align: center; opacity: 0.7;'>Sisteme Giriş Yapınız</h4>", unsafe_allow_html=True)
     
@@ -116,6 +128,145 @@ def show_login():
                     st.error("Hatalı kullanıcı adı veya şifre!")
 
 # ==========================================
+# 2.5 SOL YAN SÜREÇ TAKİP BÖLMESİ (Sidebar)
+# ==========================================
+def render_progress_sidebar():
+    view = st.session_state.get('current_view', 'dashboard')
+    mod1_step = st.session_state.get('mod1_step', 0)
+    has_milp_result = 'milp_sonuc' in st.session_state and st.session_state.milp_sonuc is not None
+
+    aktif_adimlar = set()
+    if view == 'dashboard':
+        aktif_adimlar.add('login')
+    elif view == 'module1':
+        if mod1_step <= 0:
+            aktif_adimlar.add('veri_yukleme')
+        elif mod1_step == 1:
+            aktif_adimlar.update({'aday_tesis', 'pareto'})
+        elif mod1_step == 2:
+            aktif_adimlar.update({'aday_tesis', 'kmeans'})
+        else:
+            aktif_adimlar.update({'aday_tesis', 'minimax'})
+    elif view == 'module2':
+        if has_milp_result:
+            aktif_adimlar.add('sonuclar')
+        else:
+            aktif_adimlar.add('senaryo')
+
+    def _item_html(key_name, label, is_sub=False):
+        aktif = key_name in aktif_adimlar
+        dot_cls = "kds-dot is-sub" if is_sub else "kds-dot"
+        item_cls = "kds-substep-item" if is_sub else "kds-step-item"
+        if aktif:
+            dot_cls += " is-active"
+            item_cls += " is-active"
+        return f"<div class='{item_cls}'><span class='{dot_cls}'></span><span>{label}</span></div>"
+
+    sidebar_html = f"""
+    <style>
+    section[data-testid="stSidebar"] {{
+        background: linear-gradient(180deg, #3B82C4 0%, #245B93 100%) !important;
+        border-right: 1px solid #154360 !important;
+    }}
+    section[data-testid="stSidebar"] > div,
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+    section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {{
+        background: transparent !important;
+    }}
+    section[data-testid="stSidebar"] * {{
+        color: #FFFFFF !important;
+    }}
+    section[data-testid="stSidebar"] button[kind="header"],
+    section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {{
+        color: #FFFFFF !important;
+    }}
+    .kds-sidebar-title {{
+        font-size: 1.02rem;
+        font-weight: 800;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: #FFFFFF !important;
+        padding-bottom: 12px;
+        margin-bottom: 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.28);
+    }}
+    .kds-step-list {{
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        padding-left: 2px;
+    }}
+    .kds-step-item {{
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 0.98rem;
+        font-weight: 600;
+        line-height: 1.35;
+        color: #FFFFFF !important;
+    }}
+    .kds-step-item.is-active {{
+        font-weight: 800;
+    }}
+    .kds-substep-list {{
+        display: flex;
+        flex-direction: column;
+        gap: 11px;
+        margin-top: -5px;
+        margin-bottom: 2px;
+        margin-left: 6px;
+        padding-left: 18px;
+        border-left: 1.5px solid rgba(255, 255, 255, 0.30);
+    }}
+    .kds-substep-item {{
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.89rem;
+        font-weight: 500;
+        line-height: 1.35;
+        color: rgba(255, 255, 255, 0.94) !important;
+    }}
+    .kds-substep-item.is-active {{
+        font-weight: 700;
+        color: #FFFFFF !important;
+    }}
+    .kds-dot {{
+        flex-shrink: 0;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background-color: #2D3748;
+        border: 1.5px solid #CBD5E1;
+        box-sizing: border-box;
+    }}
+    .kds-dot.is-sub {{
+        width: 11px;
+        height: 11px;
+    }}
+    .kds-dot.is-active {{
+        background-color: #E53935;
+        border: 2px solid #FFFFFF;
+        box-shadow: 0 0 8px rgba(229, 57, 53, 0.85);
+    }}
+    </style>
+    <div class="kds-sidebar-title">Süreç Takibi</div>
+    <div class="kds-step-list">
+        {_item_html('login', 'Login')}
+        {_item_html('veri_yukleme', 'Veri Yükleme')}
+        {_item_html('aday_tesis', 'Aday Tesis Belirleme')}
+        <div class="kds-substep-list">
+            {_item_html('pareto', 'Pareto Analizi', is_sub=True)}
+            {_item_html('kmeans', 'K-Means Algoritması ve Dirsek Metodu', is_sub=True)}
+            {_item_html('minimax', 'Minimax', is_sub=True)}
+        </div>
+        {_item_html('senaryo', 'Senaryo Analizi')}
+        {_item_html('sonuclar', 'Sonuçlar')}
+    </div>
+    """
+    st.sidebar.markdown(sidebar_html, unsafe_allow_html=True)
+
+# ==========================================
 # 3. ANA PANEL (Dashboard)
 # ==========================================
 def show_dashboard():
@@ -131,7 +282,7 @@ def show_dashboard():
     }
     [data-testid="stMainBlockContainer"],
     .block-container {
-        max-width: 1080px !important;
+        max-width: 1180px !important;
         padding-top: 3rem !important;
         padding-bottom: 3rem !important;
     }
@@ -145,10 +296,10 @@ def show_dashboard():
     div[data-testid="stButton"] > button[kind="primary"],
     div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"],
     div[data-testid="stButton"] > button[data-testid="baseButton-primary"] {
-        width: 320px !important;
+        width: 390px !important;
         max-width: 100% !important;
         min-height: 400px !important;
-        padding: 36px 28px !important;
+        padding: 36px 32px !important;
         display: flex !important;
         flex-direction: column !important;
         justify-content: center !important;
@@ -259,13 +410,13 @@ def show_dashboard():
     </p>
     """, unsafe_allow_html=True)
 
-    _, col1, col2, _ = st.columns([1, 2.2, 2.2, 1], gap="large")
+    _, col1, col2, _ = st.columns([0.5, 2.6, 2.6, 0.5], gap="large")
     with col1:
-        if st.button("**MODÜL 1: ADAY MERKEZ BELİRLEME**\n\nPareto, K-Means ve Minimax algoritmaları ile aday tesis konumlarını belirleyin.", key="btn_mod1", type="primary"):
+        if st.button("**VERİ GİRİŞİ VE ADAY MERKEZ BELİRLEME**\n\nPareto, K-Means ve Minimax algoritmaları ile aday tesis konumlarını belirleyin.", key="btn_mod1", type="primary"):
             st.session_state.current_view = 'module1'
             st.rerun()
     with col2:
-        if st.button("**MODÜL 2: OPTİMİZASYON VE SENARYO ANALİZİ**\n\nParametreleri değiştirerek MILP modelini çalıştırın ve tüm karar değişkenlerini analiz edin.", key="btn_mod2", type="primary"):
+        if st.button("**AĞ OPTİMİZASYONU VE SENARYO ANALİZİ**\n\nParametreleri değiştirerek MILP modelini çalıştırın ve tüm karar değişkenlerini analiz edin.", key="btn_mod2", type="primary"):
             st.session_state.current_view = 'module2'
             st.rerun()
 
@@ -1063,3 +1214,4 @@ else:
         show_module1()
     elif st.session_state.current_view == 'module2':
         show_module2()
+    render_progress_sidebar()
