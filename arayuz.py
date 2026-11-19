@@ -144,25 +144,158 @@ def show_login():
 # 3. ANA PANEL (Dashboard)
 # ==========================================
 def show_dashboard():
-    st.markdown("<h1 style='text-align: center;'>Sistem Kontrol Paneli</h1>", unsafe_allow_html=True)
+    dashboard_css = """
+    <style>
+    .stApp,
+    [data-testid="stAppViewContainer"] {
+        background-color: #F2F4F7 !important;
+        color: #1E293B !important;
+    }
+    [data-testid="stHeader"] {
+        background-color: #F2F4F7 !important;
+    }
+    [data-testid="stMainBlockContainer"],
+    .block-container {
+        max-width: 1080px !important;
+        padding-top: 3rem !important;
+        padding-bottom: 3rem !important;
+    }
+
+    div[data-testid="stButton"] {
+        display: flex !important;
+        justify-content: center !important;
+    }
+
+    /* Modül 1 & Modül 2: 3D Dikey Dikdörtgen Kurumsal Mavi Kartlar */
+    div[data-testid="stButton"] > button[kind="primary"],
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"],
+    div[data-testid="stButton"] > button[data-testid="baseButton-primary"] {
+        width: 320px !important;
+        max-width: 100% !important;
+        min-height: 400px !important;
+        padding: 36px 28px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        align-items: center !important;
+        text-align: center !important;
+        background: linear-gradient(180deg, #3B82C4 0%, #245B93 100%) !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(255, 255, 255, 0.22) !important;
+        border-bottom: 6px solid #154360 !important;
+        border-radius: 16px !important;
+        box-shadow: 0 12px 24px rgba(21, 67, 96, 0.24), 0 4px 10px rgba(21, 67, 96, 0.14) !important;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-bottom-width 0.1s ease !important;
+        cursor: pointer !important;
+    }
+
+    div[data-testid="stButton"] > button[kind="primary"]:hover,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"]:hover,
+    div[data-testid="stButton"] > button[data-testid="baseButton-primary"]:hover {
+        background: linear-gradient(180deg, #448DD1 0%, #2966A3 100%) !important;
+        transform: translateY(-5px) !important;
+        border-bottom: 6px solid #123850 !important;
+        box-shadow: 0 20px 34px rgba(21, 67, 96, 0.32), 0 8px 14px rgba(21, 67, 96, 0.18) !important;
+    }
+
+    div[data-testid="stButton"] > button[kind="primary"]:active,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"]:active,
+    div[data-testid="stButton"] > button[data-testid="baseButton-primary"]:active {
+        transform: translateY(3px) !important;
+        border-bottom: 2px solid #154360 !important;
+        box-shadow: 0 4px 10px rgba(21, 67, 96, 0.22) !important;
+    }
+
+    div[data-testid="stButton"] > button[kind="primary"] [data-testid="stMarkdownContainer"],
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"] [data-testid="stMarkdownContainer"],
+    div[data-testid="stButton"] > button[data-testid="baseButton-primary"] [data-testid="stMarkdownContainer"] {
+        width: 100% !important;
+        text-align: center !important;
+    }
+
+    div[data-testid="stButton"] > button[kind="primary"] p,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"] p,
+    div[data-testid="stButton"] > button[data-testid="baseButton-primary"] p {
+        margin: 0 !important;
+        font-size: 0.96rem !important;
+        font-weight: 400 !important;
+        line-height: 1.65 !important;
+        color: rgba(255, 255, 255, 0.92) !important;
+        white-space: normal !important;
+        text-align: center !important;
+    }
+
+    div[data-testid="stButton"] > button[kind="primary"] strong,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"] strong,
+    div[data-testid="stButton"] > button[data-testid="baseButton-primary"] strong {
+        display: block !important;
+        font-size: 1.28rem !important;
+        font-weight: 800 !important;
+        line-height: 1.35 !important;
+        letter-spacing: 0.4px !important;
+        color: #FFFFFF !important;
+        margin-bottom: 18px !important;
+    }
+
+    /* Güvenli Çıkış Yap Butonu */
+    div[data-testid="stButton"] > button[kind="secondary"],
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"],
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"] {
+        background-color: #FFFFFF !important;
+        color: #1E293B !important;
+        border: 2px solid #334155 !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        padding: 0.55rem 1.4rem !important;
+        box-shadow: 0 2px 6px rgba(30, 41, 59, 0.08) !important;
+        transition: all 0.18s ease !important;
+    }
+
+    div[data-testid="stButton"] > button[kind="secondary"] p,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"] p,
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"] p {
+        color: #1E293B !important;
+        font-weight: 600 !important;
+        margin: 0 !important;
+    }
+
+    div[data-testid="stButton"] > button[kind="secondary"]:hover,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"]:hover,
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"]:hover {
+        background-color: #1E293B !important;
+        color: #FFFFFF !important;
+        border-color: #1E293B !important;
+        box-shadow: 0 6px 14px rgba(30, 41, 59, 0.18) !important;
+    }
+
+    div[data-testid="stButton"] > button[kind="secondary"]:hover p,
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"]:hover p,
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"]:hover p {
+        color: #FFFFFF !important;
+    }
+    </style>
+    """
+    st.markdown(dashboard_css, unsafe_allow_html=True)
+
+    st.markdown("<h1 style='text-align: center; color: #1E293B; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 12px;'>Sistem Kontrol Paneli</h1>", unsafe_allow_html=True)
     st.markdown("""
-    <p style='text-align: center; font-size: 18px; max-width: 900px; margin: 0 auto; line-height: 1.6; opacity: 0.8;'>
+    <p style='text-align: center; color: #475569; font-size: 17px; max-width: 780px; margin: 0 auto 36px auto; line-height: 1.65;'>
     Bu Karar Destek Sistemi, ömrünü tamamlamış elektrikli araç bataryalarının Türkiye genelinde toplanması ve geri kazanılması için tersine lojistik ağını tasarlamak amacıyla geliştirilmiştir.
-    </p><br><br>
+    </p>
     """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
+
+    _, col1, col2, _ = st.columns([1, 2.2, 2.2, 1], gap="large")
     with col1:
-        if st.button("MODÜL 1: ADAY MERKEZ BELİRLEME\n\nPareto, K-Means ve Minimax algoritmaları ile aday tesis konumlarını belirleyin.", key="btn_mod1", type="primary", use_container_width=True):
+        if st.button("**MODÜL 1: ADAY MERKEZ BELİRLEME**\n\nPareto, K-Means ve Minimax algoritmaları ile aday tesis konumlarını belirleyin.", key="btn_mod1", type="primary"):
             st.session_state.current_view = 'module1'
             st.rerun()
     with col2:
-        if st.button("MODÜL 2: OPTİMİZASYON VE SENARYO ANALİZİ\n\nParametreleri değiştirerek MILP modelini çalıştırın ve tüm karar değişkenlerini analiz edin.", key="btn_mod2", type="primary", use_container_width=True):
+        if st.button("**MODÜL 2: OPTİMİZASYON VE SENARYO ANALİZİ**\n\nParametreleri değiştirerek MILP modelini çalıştırın ve tüm karar değişkenlerini analiz edin.", key="btn_mod2", type="primary"):
             st.session_state.current_view = 'module2'
             st.rerun()
-            
-    st.write("<br>", unsafe_allow_html=True)
-    _, col_logout, _ = st.columns([4, 2, 4])
+
+    st.markdown("<div style='height: 36px;'></div>", unsafe_allow_html=True)
+    _, col_logout, _ = st.columns([4, 2.5, 4])
     with col_logout:
         st.button("Güvenli Çıkış Yap", on_click=lambda: st.session_state.update({'logged_in': False, 'current_view': 'login'}), use_container_width=True)
 
