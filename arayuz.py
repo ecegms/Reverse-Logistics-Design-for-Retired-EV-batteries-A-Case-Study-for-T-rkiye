@@ -4,10 +4,18 @@ import pandas as pd
 import numpy as np
 import folium
 from streamlit_folium import st_folium
-from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import pulp
-import math
+from veri_hesaplama import (
+    IL_KOORDINATLARI,
+    dinamik_kmeans_ve_dirsek,
+    dinamik_minimax_p_center,
+    dinamik_pareto_analizi,
+    haversine_km,
+    il_adini_normalize_et,
+    tum_zinciri_calistir,
+    veriyi_oku_ve_temizle,
+)
 
 # Sayfa ayarları
 st.set_page_config(page_title="EV Batarya Tersine Lojistik KDS", layout="wide")
@@ -32,39 +40,8 @@ div[data-testid="stButton"] > button[kind="primary"]:hover {
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # ==========================================
-# TÜRKİYE 81 İL KOORDİNATLARI VE VARSAYILAN VERİ
+# VARSAYILAN ÖRNEK EV VERİSİ
 # ==========================================
-IL_KOORDINATLARI = {
-    "Adana": (37.0000, 35.3213), "Adıyaman": (37.7648, 38.2786), "Afyonkarahisar": (38.7507, 30.5567),
-    "Ağrı": (39.7191, 43.0503), "Amasya": (40.6499, 35.8353), "Ankara": (39.9334, 32.8597),
-    "Antalya": (36.8969, 30.7133), "Artvin": (41.1828, 41.8183), "Aydın": (37.8380, 27.8456),
-    "Balıkesir": (39.6484, 27.8826), "Bilecik": (40.1451, 29.9799), "Bingöl": (38.8847, 40.4939),
-    "Bitlis": (38.4006, 42.1095), "Bolu": (40.7392, 31.6116), "Burdur": (37.7183, 30.2823),
-    "Bursa": (40.1828, 29.0667), "Çanakkale": (40.1553, 26.4142), "Çankırı": (40.6013, 33.6134),
-    "Çorum": (40.5506, 34.9556), "Denizli": (37.7765, 29.0864), "Diyarbakır": (37.9144, 40.2306),
-    "Edirne": (41.6744, 26.5583), "Elazığ": (38.6810, 39.2264), "Erzincan": (39.7500, 39.5000),
-    "Erzurum": (39.9000, 41.2700), "Eskişehir": (39.7767, 30.5206), "Gaziantep": (37.0662, 37.3833),
-    "Giresun": (40.9128, 38.3895), "Gümüşhane": (40.4606, 39.4814), "Hakkari": (37.5744, 43.7408),
-    "Hakkâri": (37.5744, 43.7408), "Hatay": (36.2000, 36.1667), "Isparta": (37.7648, 30.5566),
-    "Mersin": (36.8000, 34.6333), "İstanbul": (41.0082, 28.9784), "İzmir": (38.4237, 27.1428),
-    "Kars": (40.6013, 43.0975), "Kastamonu": (41.3766, 33.7765), "Kayseri": (38.7312, 35.4787),
-    "Kırklareli": (41.7333, 27.2167), "Kırşehir": (39.1425, 34.1709), "Kocaeli": (40.7654, 29.9408),
-    "Konya": (37.8667, 32.4833), "Kütahya": (39.4167, 29.9833), "Malatya": (38.3552, 38.3095),
-    "Manisa": (38.6191, 27.4289), "Kahramanmaraş": (37.5858, 36.9371), "Mardin": (37.3131, 40.7436),
-    "Muğla": (37.2153, 28.3636), "Muş": (38.7304, 41.4990), "Nevşehir": (38.6244, 34.7144),
-    "Niğde": (37.9667, 34.6833), "Ordu": (40.9839, 37.8764), "Rize": (41.0201, 40.5234),
-    "Sakarya": (40.7569, 30.3783), "Samsun": (41.2867, 36.3300), "Siirt": (37.9333, 41.9500),
-    "Sinop": (42.0231, 35.1531), "Sivas": (39.7477, 37.0179), "Tekirdağ": (40.9780, 27.5085),
-    "Tokat": (40.3167, 36.5500), "Trabzon": (41.0015, 39.7178), "Tunceli": (39.1079, 39.5401),
-    "Şanlıurfa": (37.1591, 38.7969), "Uşak": (38.6823, 29.4082), "Van": (38.4891, 43.3889),
-    "Yozgat": (39.8181, 34.8147), "Zonguldak": (41.4564, 31.7987), "Aksaray": (38.3687, 34.0370),
-    "Bayburt": (40.2552, 40.2249), "Karaman": (37.1811, 33.2222), "Kırıkkale": (39.8453, 33.5063),
-    "Batman": (37.8812, 41.1351), "Şırnak": (37.5228, 42.4594), "Bartın": (41.6344, 32.3375),
-    "Ardahan": (41.1105, 42.7022), "Iğdır": (39.9237, 44.0450), "Yalova": (40.6500, 29.2667),
-    "Karabük": (41.2061, 32.6228), "Kilis": (36.7184, 37.1147), "Osmaniye": (37.0742, 36.2475),
-    "Düzce": (40.8438, 31.1565)
-}
-
 VARSAYILAN_EV_VERISI = {
     "İstanbul": 134054, "Ankara": 47965, "İzmir": 26992, "Antalya": 17436, "Bursa": 16673,
     "Kocaeli": 8927, "Konya": 7210, "Adana": 5877, "Kayseri": 5657, "Gaziantep": 5539,
@@ -81,16 +58,8 @@ VARSAYILAN_EV_VERISI = {
     "Kırıkkale": 284, "Kırşehir": 275, "Erzincan": 256, "Çankırı": 213, "Bartın": 201,
     "Sinop": 201, "Artvin": 154, "Bingöl": 129, "Gümüşhane": 110, "Siirt": 105,
     "Bayburt": 94, "Kilis": 85, "Şırnak": 82, "Kars": 81, "Bitlis": 80,
-    "Muş": 66, "Ağrı": 65, "Iğdır": 65, "Tunceli": 54, "Ardahan": 38, "Hakkâri": 14
+    "Muş": 66, "Ağrı": 65, "Iğdır": 65, "Tunceli": 54, "Ardahan": 38, "Hakkari": 14
 }
-
-def haversine_km(lat1, lon1, lat2, lon2):
-    R = 6371.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
-    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 # ==========================================
 # 1. SESSION STATE YÖNETİMİ
@@ -106,13 +75,19 @@ if 'mod1_step' not in st.session_state:
 if 'senaryo_gecmisi' not in st.session_state:
     st.session_state.senaryo_gecmisi = []
 
+def _hesaplama_durumunu_temizle():
+    for k in [
+        'pareto_sonuclari', 'pareto_meta', 'kmeans_sonuclari', 'kmeans_calisti',
+        'optimum_k', 'wcss', 'k_degerleri', 'minimax_sonuclari', 'milp_sonuc'
+    ]:
+        if k in st.session_state:
+            del st.session_state[k]
+
 def reset_system():
     st.session_state.mod1_data = None
     st.session_state.mod1_step = 0
     st.session_state.senaryo_gecmisi = []
-    for k in ['pareto_sonuclari', 'kmeans_sonuclari', 'kmeans_calisti', 'milp_sonuc']:
-        if k in st.session_state:
-            del st.session_state[k]
+    _hesaplama_durumunu_temizle()
     st.success("Sistem hafızası sıfırlandı. Yeni veri yüklenebilir.")
 
 def go_to_dashboard():
@@ -318,106 +293,81 @@ def show_module1():
         with col_def:
             if st.button("Varsayılan 81 İl Verisini Kullan", use_container_width=True):
                 df_def = pd.DataFrame(list(VARSAYILAN_EV_VERISI.items()), columns=['İl', 'EV_Sayısı'])
-                st.session_state.mod1_data = df_def
+                temiz_df, _ = veriyi_oku_ve_temizle(df_def)
+                _hesaplama_durumunu_temizle()
+                st.session_state.mod1_data = temiz_df
+                st.session_state._son_yuklenen_dosya = None
                 st.session_state.mod1_step = 1
                 st.rerun()
 
         if uploaded_file is not None:
             try:
-                df = pd.read_excel(uploaded_file)
-                if 'İl' not in df.columns or 'EV_Sayısı' not in df.columns:
-                    st.error("Excel dosyasında 'İl' ve 'EV_Sayısı' sütunları bulunamadı.")
-                else:
-                    st.session_state.mod1_data = df
-                    st.success(f"Veri başarıyla işlendi. Toplam {len(df)} il tespit edildi.")
-                    if st.button("Pareto Analizini Başlat", type="primary"):
-                        st.session_state.mod1_step = 1
-                        st.rerun()
+                dosya_imza = (uploaded_file.name, uploaded_file.size)
+                df_ham = pd.read_excel(uploaded_file)
+                temiz_df, uyarilar = veriyi_oku_ve_temizle(df_ham)
+                for uyari in uyarilar:
+                    st.warning(uyari)
+                if st.session_state.get('_son_yuklenen_dosya') != dosya_imza:
+                    _hesaplama_durumunu_temizle()
+                    st.session_state._son_yuklenen_dosya = dosya_imza
+                    st.session_state.mod1_step = 0
+                st.session_state.mod1_data = temiz_df
+                st.success(f"Veri başarıyla işlendi. Toplam {len(temiz_df)} geçerli il tespit edildi.")
+                if st.button("Pareto Analizini Başlat", type="primary"):
+                    _hesaplama_durumunu_temizle()
+                    st.session_state.mod1_step = 1
+                    st.rerun()
+            except ValueError as ve:
+                st.error(str(ve))
             except Exception as e:
                 st.error(f"Dosya okuma hatası: {e}")
 
     if st.session_state.mod1_step >= 1 and st.session_state.mod1_data is not None:
         st.divider()
         st.subheader("Adım 2: Pareto Analizi Sonuçları")
-        df = st.session_state.mod1_data
-        df_sorted = df.sort_values(by='EV_Sayısı', ascending=False).reset_index(drop=True)
-        toplam_ev = df_sorted['EV_Sayısı'].sum()
-        df_sorted['Kümülatif_Toplam'] = df_sorted['EV_Sayısı'].cumsum()
-        df_sorted['Kümülatif_Yüzde'] = (df_sorted['Kümülatif_Toplam'] / toplam_ev) * 100
-        
-        idx_80 = df_sorted[df_sorted['Kümülatif_Yüzde'] >= 80].index.min()
-        pareto_df = df_sorted.iloc[:idx_80 + 1].copy()
-        st.info(f"Toplam talebin %80'ini karşılayan en yüksek yoğunluklu {len(pareto_df)} il, Aday Toplama Merkezi (j) olarak belirlendi.")
-        
-        m_pareto = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
-        for index, row in pareto_df.iterrows():
-            il_adi = str(row['İl']).strip().title()
-            if il_adi in IL_KOORDINATLARI:
-                lat, lon = IL_KOORDINATLARI[il_adi]
-                tooltip_html = f"<b>Tesis:</b> Aday Toplama Merkezi<br><b>İl:</b> {il_adi}<br><b>EV:</b> {row['EV_Sayısı']:,.0f}"
-                folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_pareto)
-                
-        st_folium(m_pareto, width=900, height=420, key="map_pareto")
-        st.session_state.pareto_sonuclari = pareto_df
+        try:
+            pareto_sonuc = dinamik_pareto_analizi(st.session_state.mod1_data, esik=80.0)
+            pareto_df = pareto_sonuc["pareto_df"]
+            st.session_state.pareto_sonuclari = pareto_df
+            st.session_state.pareto_meta = pareto_sonuc
+            st.info(
+                f"%{pareto_sonuc['esik']:.0f} hedefine en yakın kümülatif talep (%{pareto_sonuc['ulasilan_yuzde']:.2f}) "
+                f"ile en yüksek yoğunluklu {pareto_sonuc['secilen_il_sayisi']} il, Aday Toplama Merkezi (j) olarak belirlendi."
+            )
 
-        if st.button("K-Means Kümeleme Algoritmasını Çalıştır", type="primary"):
-            st.session_state.mod1_step = 2
-            st.rerun()
+            m_pareto = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
+            for index, row in pareto_df.iterrows():
+                il_adi = il_adini_normalize_et(row['İl'])
+                if il_adi in IL_KOORDINATLARI:
+                    lat, lon = IL_KOORDINATLARI[il_adi]
+                    tooltip_html = f"<b>Tesis:</b> Aday Toplama Merkezi<br><b>İl:</b> {il_adi}<br><b>EV:</b> {row['EV_Sayısı']:,.0f}"
+                    folium.Marker([lat, lon], tooltip=tooltip_html, icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_pareto)
+
+            st_folium(m_pareto, width=900, height=420, key="map_pareto")
+
+            if st.button("K-Means Kümeleme Algoritmasını Çalıştır", type="primary"):
+                st.session_state.mod1_step = 2
+                st.rerun()
+        except Exception as e:
+            st.error(f"Pareto analizi sırasında hata oluştu: {e}")
 
     if st.session_state.mod1_step >= 2:
         st.divider()
-        st.subheader("Adım 3: Dirsek Metodu ve SPSS Tabanlı K-Means Kümeleme")
+        st.subheader("Adım 3: Dirsek Metodu ve K-Means Kümeleme")
         if st.button("Dirsek Metodu ve K-Means Algoritmasını Çalıştır", type="primary", key="btn_kmeans"):
-            pareto_df = st.session_state.pareto_sonuclari
-            coords, sehirler = [], []
-            for _, row in pareto_df.iterrows():
-                il_adi = str(row['İl']).strip().title()
-                if il_adi in IL_KOORDINATLARI:
-                    coords.append(IL_KOORDINATLARI[il_adi])
-                    sehirler.append(il_adi)
-                    
-            X = np.array(coords)
-            max_k = min(10, len(coords))
-            k_degerleri = list(range(2, max_k + 1))
-            wcss = []
-            
-            for k in k_degerleri:
-                kmeans = KMeans(n_clusters=k, init=X[:k], n_init=1, max_iter=10, random_state=None)
-                kmeans.fit(X)
-                wcss.append(kmeans.inertia_)
-                
-            x1, y1 = k_degerleri[0], wcss[0]
-            x2, y2 = k_degerleri[-1], wcss[-1]
-            uzakliklar = [abs((y2 - y1)*k_degerleri[i] - (x2 - x1)*wcss[i] + x2*y1 - y2*x1) / np.sqrt((y2 - y1)**2 + (x2 - x1)**2) for i in range(len(k_degerleri))]
-            optimum_k = k_degerleri[np.argmax(uzakliklar)]
-            
-            st.session_state.optimum_k = optimum_k
-            st.session_state.wcss = wcss
-            st.session_state.k_degerleri = k_degerleri
-            
-            kmeans_final = KMeans(n_clusters=optimum_k, init=X[:optimum_k], n_init=1, max_iter=10, random_state=None)
-            kmeans_final.fit(X)
-            centroids = kmeans_final.cluster_centers_
-            
-            aday_isleme_merkezleri = []
-            for i, centroid in enumerate(centroids):
-                min_dist = float('inf')
-                closest_city = None
-                for sehir in sehirler:
-                    lat, lon = IL_KOORDINATLARI[sehir]
-                    dist = np.sqrt((centroid[0] - lat)**2 + (centroid[1] - lon)**2)
-                    if dist < min_dist:
-                        min_dist = dist
-                        closest_city = sehir
-                if not any(d['İl'] == closest_city for d in aday_isleme_merkezleri):
-                    aday_isleme_merkezleri.append({
-                        "İl": closest_city,
-                        "Lat": IL_KOORDINATLARI[closest_city][0],
-                        "Lon": IL_KOORDINATLARI[closest_city][1],
-                        "Kod": f"İM-{i+1}"
-                    })
-            st.session_state.kmeans_sonuclari = aday_isleme_merkezleri
-            st.session_state.kmeans_calisti = True
+            try:
+                pareto_df = st.session_state.pareto_sonuclari
+                kmeans_res = dinamik_kmeans_ve_dirsek(pareto_df, random_state=42)
+
+                st.session_state.optimum_k = kmeans_res["optimum_k"]
+                st.session_state.wcss = kmeans_res["wcss"]
+                st.session_state.k_degerleri = kmeans_res["k_degerleri"]
+                st.session_state.kmeans_sonuclari = kmeans_res["aday_isleme_merkezleri"]
+                st.session_state.kmeans_calisti = True
+                if 'minimax_sonuclari' in st.session_state:
+                    del st.session_state['minimax_sonuclari']
+            except Exception as e:
+                st.error(f"K-Means kümeleme sırasında hata oluştu: {e}")
 
         if st.session_state.get('kmeans_calisti', False):
             opt_k = st.session_state.optimum_k
@@ -425,7 +375,8 @@ def show_module1():
             with col_grafik:
                 fig, ax = plt.subplots(figsize=(6, 3.5))
                 ax.plot(st.session_state.k_degerleri, st.session_state.wcss, marker='o', color='#2F70AF', linewidth=2)
-                opt_wcss = st.session_state.wcss[opt_k - 2]
+                opt_idx = st.session_state.k_degerleri.index(opt_k)
+                opt_wcss = st.session_state.wcss[opt_idx]
                 ax.plot(opt_k, opt_wcss, marker='o', markersize=10, color='red')
                 ax.set_title(f"Dirsek Grafiği (Optimum k={opt_k})")
                 ax.set_xlabel("Küme Sayısı (k)")
@@ -443,31 +394,47 @@ def show_module1():
     if st.session_state.mod1_step >= 3:
         st.divider()
         st.subheader("Adım 4: Minimax Algoritması Sonuçları")
-        st.success("Tüm aday merkez konumları başarıyla tespit edildi! Aday Toplama, İşleme, Geri Dönüşüm ve İkinci Ömür Merkezleri haritada gösterilmektedir.")
-        
-        m_minimax = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
-        
-        if 'pareto_sonuclari' in st.session_state:
-            for _, row in st.session_state.pareto_sonuclari.iterrows():
-                il_adi = str(row['İl']).strip().title()
-                if il_adi in IL_KOORDINATLARI:
-                    lat, lon = IL_KOORDINATLARI[il_adi]
-                    folium.Marker([lat, lon], tooltip=f"Aday Toplama Merkezi: {il_adi}", icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_minimax)
+        try:
+            isleme_merkezleri = st.session_state.get('kmeans_sonuclari', [])
+            minimax_res = dinamik_minimax_p_center(isleme_merkezleri, p=2)
+            st.session_state.minimax_sonuclari = minimax_res
+            secilen_iller_str = ", ".join(m["İl"] for m in minimax_res["secilen_merkezler"])
+            st.success(
+                f"Dinamik Minimax (p-Center, p={minimax_res['p_kullanilan']}) optimizasyonu tamamlandı! "
+                f"Seçilen merkezler: {secilen_iller_str} (Maksimum Mesafe Z = {minimax_res['minimax_z_km']:,.2f} km)."
+            )
 
-        if 'kmeans_sonuclari' in st.session_state:
-            for merkez in st.session_state.kmeans_sonuclari:
-                folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=f"Aday İşleme Merkezi: {merkez['İl']} ({merkez['Kod']})", icon=folium.Icon(color="red", icon="cog")).add_to(m_minimax)
+            m_minimax = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
 
-        geri_donusum_merkezleri = [("Adana", 37.0000, 35.3213, "GDM-01")]
-        ikinci_omur_merkezleri = [("Konya", 37.8667, 32.4833, "İÖM-01")]
-        
-        for il, lat, lon, kod in geri_donusum_merkezleri:
-            folium.Marker([lat, lon], tooltip=f"Aday Geri Dönüşüm Merkezi: {il} ({kod})", icon=folium.Icon(color="green", icon="recycle")).add_to(m_minimax)
-            
-        for il, lat, lon, kod in ikinci_omur_merkezleri:
-            folium.Marker([lat, lon], tooltip=f"Aday İkinci Ömür Merkezi: {il} ({kod})", icon=folium.Icon(color="orange", icon="flash")).add_to(m_minimax)
+            if 'pareto_sonuclari' in st.session_state:
+                for _, row in st.session_state.pareto_sonuclari.iterrows():
+                    il_adi = il_adini_normalize_et(row['İl'])
+                    if il_adi in IL_KOORDINATLARI:
+                        lat, lon = IL_KOORDINATLARI[il_adi]
+                        folium.Marker([lat, lon], tooltip=f"Aday Toplama Merkezi: {il_adi}", icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_minimax)
 
-        st_folium(m_minimax, width=900, height=450, key="map_minimax")
+            if 'kmeans_sonuclari' in st.session_state:
+                for merkez in st.session_state.kmeans_sonuclari:
+                    folium.Marker([merkez['Lat'], merkez['Lon']], tooltip=f"Aday İşleme Merkezi: {merkez['İl']} ({merkez['Kod']})", icon=folium.Icon(color="red", icon="cog")).add_to(m_minimax)
+
+            geri_donusum_merkezleri = [
+                (m["İl"], m["Lat"], m["Lon"], m["GDM_Kod"])
+                for m in minimax_res["secilen_merkezler"]
+            ]
+            ikinci_omur_merkezleri = [
+                (m["İl"], m["Lat"], m["Lon"], m["IOM_Kod"])
+                for m in minimax_res["secilen_merkezler"]
+            ]
+
+            for il, lat, lon, kod in geri_donusum_merkezleri:
+                folium.Marker([lat, lon], tooltip=f"Aday Geri Dönüşüm Merkezi: {il} ({kod})", icon=folium.Icon(color="green", icon="recycle")).add_to(m_minimax)
+
+            for il, lat, lon, kod in ikinci_omur_merkezleri:
+                folium.Marker([lat, lon], tooltip=f"Aday İkinci Ömür Merkezi: {il} ({kod})", icon=folium.Icon(color="orange", icon="flash")).add_to(m_minimax)
+
+            st_folium(m_minimax, width=900, height=450, key="map_minimax")
+        except Exception as e:
+            st.error(f"Minimax (p-Center) hesaplaması sırasında hata oluştu: {e}")
 
         st.write("<br>", unsafe_allow_html=True)
         if st.button("Modül 2: Optimizasyon Modelini Çöz ➡", type="primary"):
@@ -658,25 +625,47 @@ def show_module2():
     col_reset.button("🔄 Hafızayı Sıfırla", on_click=reset_system)
     st.divider()
 
-    if 'pareto_sonuclari' in st.session_state:
-        varsayilan_J = [str(x).strip().title() for x in st.session_state.pareto_sonuclari['İl'].tolist()]
+    if st.session_state.mod1_data is not None:
+        aktif_df, _ = veriyi_oku_ve_temizle(st.session_state.mod1_data)
     else:
-        varsayilan_J = ["İstanbul", "Ankara", "İzmir", "Antalya", "Bursa", "Kocaeli", "Konya", "Adana", "Kayseri", "Gaziantep", "Mersin"]
+        aktif_df, _ = veriyi_oku_ve_temizle(
+            pd.DataFrame(list(VARSAYILAN_EV_VERISI.items()), columns=['İl', 'EV_Sayısı'])
+        )
+
+    ev_data = {
+        il_adini_normalize_et(r['İl']): float(r['EV_Sayısı'])
+        for _, r in aktif_df.iterrows()
+        if il_adini_normalize_et(r['İl']) in IL_KOORDINATLARI
+    }
+
+    otomatik_zincir = None
+    if not (
+        'pareto_sonuclari' in st.session_state
+        and 'kmeans_sonuclari' in st.session_state
+        and 'minimax_sonuclari' in st.session_state
+    ):
+        otomatik_zincir = tum_zinciri_calistir(aktif_df, esik=80.0, p=2, random_state=42)
+
+    if 'pareto_sonuclari' in st.session_state:
+        varsayilan_J = [il_adini_normalize_et(x) for x in st.session_state.pareto_sonuclari['İl'].tolist()]
+    else:
+        varsayilan_J = otomatik_zincir["pareto"]["pareto_df"]["İl"].tolist()
 
     if 'kmeans_sonuclari' in st.session_state:
-        varsayilan_K = [x['İl'] for x in st.session_state.kmeans_sonuclari]
+        varsayilan_K = [il_adini_normalize_et(x['İl']) for x in st.session_state.kmeans_sonuclari]
     else:
-        varsayilan_K = ["Bursa", "Adana", "Konya"]
+        varsayilan_K = [x['İl'] for x in otomatik_zincir["kmeans"]["aday_isleme_merkezleri"]]
 
-    varsayilan_L = ["Konya", "Adana"]
-    varsayilan_M = ["Adana", "Konya"]
+    if 'minimax_sonuclari' in st.session_state:
+        minimax_adaylar = [il_adini_normalize_et(x['İl']) for x in st.session_state.minimax_sonuclari['secilen_merkezler']]
+    elif 'kmeans_sonuclari' in st.session_state:
+        minimax_hesap = dinamik_minimax_p_center(st.session_state.kmeans_sonuclari, p=2)
+        minimax_adaylar = [x['İl'] for x in minimax_hesap['secilen_merkezler']]
+    else:
+        minimax_adaylar = [x['İl'] for x in otomatik_zincir["minimax"]["secilen_merkezler"]]
 
-    ev_data = VARSAYILAN_EV_VERISI.copy()
-    if st.session_state.mod1_data is not None:
-        for _, r in st.session_state.mod1_data.iterrows():
-            il = str(r['İl']).strip().title()
-            if il in IL_KOORDINATLARI:
-                ev_data[il] = float(r['EV_Sayısı'])
+    varsayilan_L = list(minimax_adaylar)
+    varsayilan_M = list(minimax_adaylar)
 
     st.subheader("1. Senaryo Parametrelerini Yapılandırın (What-If Analizi)")
     senaryo_adi = st.text_input("Senaryo Adı", value=f"Senaryo {len(st.session_state.senaryo_gecmisi) + 1}")
