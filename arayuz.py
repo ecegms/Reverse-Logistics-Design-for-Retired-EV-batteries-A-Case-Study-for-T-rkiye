@@ -1302,6 +1302,33 @@ def solve_milp_model(params):
     """
     return milp_5_donem_coz(params)
 
+def _quadratic_bezier_yay(p1, p2, egrilik=0.18, adim=18):
+    lat1, lon1 = float(p1[0]), float(p1[1])
+    lat2, lon2 = float(p2[0]), float(p2[1])
+    d_lat = lat2 - lat1
+    d_lon = lon2 - lon1
+    uzunluk = float(np.hypot(d_lat, d_lon))
+    if uzunluk < 1e-6:
+        return [(lat1, lon1), (lat2, lon2)]
+
+    mid_lat = (lat1 + lat2) / 2.0
+    mid_lon = (lon1 + lon2) / 2.0
+    perp_lat = -d_lon / uzunluk
+    perp_lon = d_lat / uzunluk
+    sapma = min(uzunluk * egrilik, 1.15)
+    ctrl_lat = mid_lat + perp_lat * sapma
+    ctrl_lon = mid_lon + perp_lon * sapma
+
+    t_vals = np.linspace(0.0, 1.0, adim)
+    noktalar = []
+    for t in t_vals:
+        u = 1.0 - t
+        lat = (u * u * lat1) + (2.0 * u * t * ctrl_lat) + (t * t * lat2)
+        lon = (u * u * lon1) + (2.0 * u * t * ctrl_lon) + (t * t * lon2)
+        noktalar.append((float(lat), float(lon)))
+    return noktalar
+
+
 def _render_opt_tesis_haritasi(
     x1_dict,
     x2_dict,
@@ -1311,6 +1338,7 @@ def _render_opt_tesis_haritasi(
     w1_rows=None,
     w2_rows=None,
     w3_rows=None,
+    z_rows=None,
     height=440,
 ):
     renk_toplama = "#2B6CB0"
@@ -1348,6 +1376,12 @@ def _render_opt_tesis_haritasi(
                 "popup": popup_html,
             })
 
+    yay_lejant_html = (
+        '<span style="color:#475569;"><span style="display:inline-block; width:18px; height:8px; border-top:2px solid #3B82C4; border-radius:50% 50% 0 0; vertical-align:middle; margin-right:4px;"></span><b>Mavi Yay:</b> İl → Toplama Merkezi Akışı (Z)</span>'
+        if z_rows is not None
+        else ""
+    )
+
     st.markdown(
         f"""
         <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 8px 14px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; font-size: 13.5px; color: #1E293B;">
@@ -1355,7 +1389,8 @@ def _render_opt_tesis_haritasi(
             <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_isleme}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Kırmızı:</b> İşleme</span>
             <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_iom}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Turuncu:</b> İkinci Ömür</span>
             <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_gdm}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Yeşil:</b> Geri Dönüşüm</span>
-            <span style="color:#475569;">| <span style="display:inline-block; width:18px; border-top:2.5px solid #DC2626; vertical-align:middle; margin-right:4px;"></span>Toplama → İşleme</span>
+            <span style="color:#475569;">| {yay_lejant_html}</span>
+            <span style="color:#475569;"><span style="display:inline-block; width:18px; border-top:2.5px solid #DC2626; vertical-align:middle; margin-right:4px;"></span>Toplama → İşleme</span>
             <span style="color:#475569;"><span style="display:inline-block; width:18px; border-top:2.5px dashed #111827; vertical-align:middle; margin-right:4px;"></span>İşleme → İÖM / GDM</span>
         </div>
         """,
@@ -1367,6 +1402,32 @@ def _render_opt_tesis_haritasi(
         return
 
     m_opt = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
+
+    # En alt katman: Şehir -> Toplama Merkezi (Z > 0) kavisli mavi yayları (quadratic Bezier)
+    z_toplam_akislar = {}
+    for r in (z_rows or []):
+        il_kaynak = il_adini_normalize_et(r.get("İl (i)", ""))
+        j_hedef = il_adini_normalize_et(r.get("Toplama Merkezi (j)", ""))
+        miktar = float(r.get("Miktar (Adet)", 0.0) or 0.0)
+        if il_kaynak and j_hedef and il_kaynak != j_hedef and miktar > 0.0:
+            anahtar = (il_kaynak, j_hedef)
+            z_toplam_akislar[anahtar] = z_toplam_akislar.get(anahtar, 0.0) + miktar
+
+    for (il_kaynak, j_hedef), toplam_adet in z_toplam_akislar.items():
+        if il_kaynak in IL_KOORDINATLARI and j_hedef in IL_KOORDINATLARI:
+            yay_noktalari = _quadratic_bezier_yay(
+                IL_KOORDINATLARI[il_kaynak],
+                IL_KOORDINATLARI[j_hedef],
+                egrilik=0.18,
+                adim=18,
+            )
+            folium.PolyLine(
+                locations=yay_noktalari,
+                color="#3B82C4",
+                weight=1.6,
+                opacity=0.55,
+                tooltip=f"{il_kaynak} → {j_hedef}: {toplam_adet:,.0f} adet batarya",
+            ).add_to(m_opt)
 
     # Akış çizgileri (README.md: Toplama→İşleme düz kırmızı, İşleme→İÖM/GDM kesikli siyah)
     cizilen_w1 = set()
@@ -1474,6 +1535,235 @@ def _tablo_veya_bilgi(kayitlar, bos_mesaj="Bu dönem için kayıt bulunmamaktad�
         st.dataframe(pd.DataFrame(kayitlar), use_container_width=True, hide_index=True)
     else:
         st.info(bos_mesaj)
+
+
+def _grafik_aktif_tesisler(x1_t, x2_t, x3_t, x4_t, t_no):
+    turler = ["Toplama", "İşleme", "İkinci Ömür", "Geri Dönüşüm"]
+    sozlukler = [x1_t or {}, x2_t or {}, x3_t or {}, x4_t or {}]
+    aday_sayilari = [len(s) for s in sozlukler]
+    aktif_sayilari = [sum(int(round(v or 0)) for v in s.values()) for s in sozlukler]
+
+    if sum(aday_sayilari) == 0:
+        st.info(f"Dönem {t_no} için grafik oluşturacak tesis verisi bulunmamaktadır.")
+        return
+
+    x_pos = np.arange(len(turler))
+    bar_w = 0.36
+    fig, ax = plt.subplots(figsize=(5.8, 3.6), dpi=100)
+    b_aday = ax.bar(x_pos - bar_w / 2, aday_sayilari, width=bar_w, label="Aday Sayısı", color="#CBD5E1")
+    b_aktif = ax.bar(x_pos + bar_w / 2, aktif_sayilari, width=bar_w, label="Aktif Tesis", color="#2B6CB0")
+
+    for bar in list(b_aday) + list(b_aktif):
+        h = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2, h + 0.15, f"{int(h)}", ha="center", va="bottom", fontsize=8.5, color="#1E293B")
+
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(turler, fontsize=8.5, color="#1E293B")
+    ax.set_ylabel("Tesis Sayısı", fontsize=9, color="#334155")
+    ax.set_title(f"Dönem {t_no} — Aday ve Aktif Tesis Karşılaştırması", fontsize=10.5, fontweight="bold", pad=10, color="#1E293B")
+    ax.set_ylim(0, max(aday_sayilari + [1]) * 1.22)
+    ax.tick_params(axis="y", labelsize=8.5, colors="#475569")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", linestyle="--", alpha=0.45)
+    ax.legend(frameon=False, fontsize=8.5)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def _grafik_toplama_z(z_rows, t_no):
+    if not z_rows:
+        st.info(f"Dönem {t_no} için toplama (Z) grafiği oluşturulacak pozitif veri bulunmamaktadır.")
+        return
+
+    df_z = pd.DataFrame(z_rows)
+    if "Toplama Merkezi (j)" not in df_z.columns or "Miktar (Adet)" not in df_z.columns:
+        st.info(f"Dönem {t_no} toplama (Z) grafiği için gerekli sütunlar bulunamadı.")
+        return
+
+    df_z["Toplama Merkezi (j)"] = df_z["Toplama Merkezi (j)"].apply(il_adini_normalize_et)
+    grup = (
+        df_z.groupby("Toplama Merkezi (j)", as_index=False)["Miktar (Adet)"]
+        .sum()
+        .sort_values("Miktar (Adet)", ascending=False)
+        .head(10)
+        .sort_values("Miktar (Adet)", ascending=True)
+    )
+    if grup.empty or float(grup["Miktar (Adet)"].sum()) <= 0:
+        st.info(f"Dönem {t_no} için toplama (Z) grafiği oluşturulacak pozitif veri bulunmamaktadır.")
+        return
+
+    fig, ax = plt.subplots(figsize=(5.8, 3.8), dpi=100)
+    ax.barh(grup["Toplama Merkezi (j)"], grup["Miktar (Adet)"], color="#2B6CB0")
+    ax.set_xlabel("Toplanan Batarya (Adet)", fontsize=9, color="#334155")
+    ax.set_title(f"Dönem {t_no} — Toplama Merkezlerine Göre Hacim (İlk 10)", fontsize=10.5, fontweight="bold", pad=10, color="#1E293B")
+    ax.tick_params(axis="both", labelsize=8.5, colors="#475569")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="x", linestyle="--", alpha=0.45)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def _grafik_akislar_w(w1_rows, w2_rows, w3_rows, w4_rows, t_no):
+    w1_toplam = sum(float(r.get("Miktar (Adet)", 0.0) or 0.0) for r in (w1_rows or []))
+    w2_toplam = sum(float(r.get("Toplam Hücre", 0.0) or 0.0) for r in (w2_rows or []))
+    w3_toplam = sum(float(r.get("Hücre Sayısı", 0.0) or 0.0) for r in (w3_rows or []))
+    w4_toplam = sum(float(r.get("Bertarafa Giden Hücre", 0.0) or 0.0) for r in (w4_rows or []))
+
+    if (w1_toplam + w2_toplam + w3_toplam + w4_toplam) <= 0:
+        st.info(f"Dönem {t_no} için tesis akış grafiği oluşturulacak pozitif veri bulunmamaktadır.")
+        return
+
+    kanallar = ["İkinci Ömür\n(W2)", "Geri Dönüşüm\n(W3)", "Bertaraf\n(W4)"]
+    degerler = [w2_toplam, w3_toplam, w4_toplam]
+    renkler = ["#2E8B57", "#2B6CB0", "#64748B"]
+
+    fig, ax = plt.subplots(figsize=(5.8, 3.8), dpi=100)
+    bars = ax.bar(kanallar, degerler, color=renkler, width=0.52)
+    max_val = max(degerler) if degerler else 1.0
+    for bar in bars:
+        h = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2, h + (max_val * 0.02 if max_val > 0 else 0.1), f"{h:,.0f}", ha="center", va="bottom", fontsize=8.5, color="#1E293B")
+
+    ax.set_ylabel("Hücre Sayısı", fontsize=9, color="#334155")
+    ax.set_title(f"Dönem {t_no} — İşleme Sonrası Hücre Akış Dağılımı", fontsize=10.5, fontweight="bold", pad=10, color="#1E293B")
+    ax.set_ylim(0, (max_val * 1.18) if max_val > 0 else 1.0)
+    ax.tick_params(axis="both", labelsize=8.5, colors="#475569")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", linestyle="--", alpha=0.45)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+    st.caption(f"W1 (Toplama → İşleme) toplam akışı: **{w1_toplam:,.0f} adet batarya**")
+
+
+def _grafik_pazar_satislari_v(v_rows, t_no):
+    if not v_rows:
+        st.info(f"Dönem {t_no} için pazar satışı (V) grafiği oluşturulacak pozitif veri bulunmamaktadır.")
+        return
+
+    df_v = pd.DataFrame(v_rows)
+    if "Pazar (s)" not in df_v.columns or "Batarya Tipi (b)" not in df_v.columns or "Satılan Hücre" not in df_v.columns:
+        st.info(f"Dönem {t_no} pazar satışı grafiği için gerekli sütunlar bulunamadı.")
+        return
+
+    pivot = df_v.pivot_table(index="Pazar (s)", columns="Batarya Tipi (b)", values="Satılan Hücre", aggfunc="sum", fill_value=0.0)
+    if pivot.empty or float(pivot.to_numpy().sum()) <= 0:
+        st.info(f"Dönem {t_no} için pazar satışı (V) grafiği oluşturulacak pozitif veri bulunmamaktadır.")
+        return
+
+    pazarlar = list(pivot.index)
+    tipler = list(pivot.columns)
+    x_pos = np.arange(len(pazarlar))
+    bar_w = 0.36 if len(tipler) > 1 else 0.48
+    tip_renkleri = {"Binek": "#2B6CB0", "Agir_Vasita": "#2E8B57"}
+
+    fig, ax = plt.subplots(figsize=(5.8, 3.6), dpi=100)
+    for idx_t, tip in enumerate(tipler):
+        kaydirma = (idx_t - (len(tipler) - 1) / 2.0) * bar_w
+        etiket = "Binek" if tip == "Binek" else ("Ağır Vasıta" if tip == "Agir_Vasita" else str(tip))
+        ax.bar(
+            x_pos + kaydirma,
+            pivot[tip].to_numpy(dtype=float),
+            width=bar_w,
+            label=etiket,
+            color=tip_renkleri.get(tip, "#64748B"),
+        )
+
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(pazarlar, fontsize=8.5, color="#1E293B", rotation=12, ha="right")
+    ax.set_ylabel("Satılan Hücre", fontsize=9, color="#334155")
+    ax.set_title(f"Dönem {t_no} — Pazar ve Batarya Tipine Göre Satışlar (V)", fontsize=10.5, fontweight="bold", pad=10, color="#1E293B")
+    ax.tick_params(axis="y", labelsize=8.5, colors="#475569")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", linestyle="--", alpha=0.45)
+    ax.legend(frameon=False, fontsize=8.5)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def _grafik_stoklar_i(i1_rows, i2_rows, i3_rows, i4_rows, t_no):
+    i1_top = sum(float(r.get("Stok (Adet)", 0.0) or 0.0) for r in (i1_rows or []))
+    i2_top = sum(float(r.get("Stok (Adet)", 0.0) or 0.0) for r in (i2_rows or []))
+    i3_top = sum(float(r.get("Stok (Hücre)", 0.0) or 0.0) for r in (i3_rows or []))
+    i4_top = sum(float(r.get("Stok (Hücre)", 0.0) or 0.0) for r in (i4_rows or []))
+
+    if (i1_top + i2_top + i3_top + i4_top) <= 0:
+        st.info(f"Dönem {t_no} için dönem sonu stok (I1..I4) bulunmamaktadır.")
+        return
+
+    asamalar = ["I1 Toplama\n(Adet)", "I2 İşleme\n(Adet)", "I3 İşleme\n(Hücre)", "I4 İkinci Ömür\n(Hücre)"]
+    degerler = [i1_top, i2_top, i3_top, i4_top]
+    renkler = ["#2B6CB0", "#3B82C4", "#2E8B57", "#64748B"]
+
+    fig, ax = plt.subplots(figsize=(5.8, 3.6), dpi=100)
+    bars = ax.bar(asamalar, degerler, color=renkler, width=0.52)
+    max_val = max(degerler) if degerler else 1.0
+    for bar in bars:
+        h = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2, h + (max_val * 0.02 if max_val > 0 else 0.1), f"{h:,.0f}", ha="center", va="bottom", fontsize=8.5, color="#1E293B")
+
+    ax.set_ylabel("Dönem Sonu Stok Miktarı", fontsize=9, color="#334155")
+    ax.set_title(f"Dönem {t_no} — Aşamalara Göre Dönem Sonu Stokları", fontsize=10.5, fontweight="bold", pad=10, color="#1E293B")
+    ax.set_ylim(0, (max_val * 1.18) if max_val > 0 else 1.0)
+    ax.tick_params(axis="both", labelsize=8.5, colors="#475569")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", linestyle="--", alpha=0.45)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def _grafik_hammadde_delta(delta_rows, t_no):
+    if not delta_rows:
+        st.info(f"Dönem {t_no} için hammadde üretimi (δ) grafiği oluşturulacak pozitif veri bulunmamaktadır.")
+        return
+
+    df_d = pd.DataFrame(delta_rows)
+    if "Materyal (n)" not in df_d.columns or "Geri Kazanılan Miktar (kg)" not in df_d.columns:
+        st.info(f"Dönem {t_no} hammadde grafiği için gerekli sütunlar bulunamadı.")
+        return
+
+    grup = (
+        df_d.groupby("Materyal (n)", as_index=False)["Geri Kazanılan Miktar (kg)"]
+        .sum()
+        .sort_values("Geri Kazanılan Miktar (kg)", ascending=True)
+    )
+    if grup.empty or float(grup["Geri Kazanılan Miktar (kg)"].sum()) <= 0:
+        st.info(f"Dönem {t_no} için hammadde üretimi (δ) grafiği oluşturulacak pozitif veri bulunmamaktadır.")
+        return
+
+    etiket_map = {
+        "Aluminyum": "Alüminyum",
+        "Bakir": "Bakır",
+    }
+    etiketler = [etiket_map.get(str(m), str(m)) for m in grup["Materyal (n)"]]
+    miktarlar = grup["Geri Kazanılan Miktar (kg)"].to_numpy(dtype=float)
+
+    fig, ax = plt.subplots(figsize=(5.8, 3.6), dpi=100)
+    bars = ax.barh(etiketler, miktarlar, color="#2E8B57")
+    max_val = float(np.max(miktarlar)) if len(miktarlar) else 1.0
+    for bar in bars:
+        w = bar.get_width()
+        ax.text(w + (max_val * 0.015 if max_val > 0 else 0.1), bar.get_y() + bar.get_height() / 2, f"{w:,.1f} kg", va="center", ha="left", fontsize=8, color="#1E293B")
+
+    ax.set_xlabel("Geri Kazanılan Miktar (kg)", fontsize=9, color="#334155")
+    ax.set_title(f"Dönem {t_no} — Geri Kazanılan Hammadde Miktarları (kg)", fontsize=10.5, fontweight="bold", pad=10, color="#1E293B")
+    ax.set_xlim(0, (max_val * 1.24) if max_val > 0 else 1.0)
+    ax.tick_params(axis="both", labelsize=8.5, colors="#475569")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="x", linestyle="--", alpha=0.45)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
 
 
 def show_module2():
@@ -1772,77 +2062,80 @@ def show_module2():
                     ])
 
                     with dt1:
-                        cx1, cx2, cx3, cx4 = st.columns(4)
-                        with cx1:
-                            st.markdown("**Toplama (x1)**")
-                            st.dataframe(
-                                pd.DataFrame(
-                                    [{"İl": il_adini_normalize_et(k), "Durum": "Açık (1)" if int(round(v)) == 1 else "Kapalı (0)"} for k, v in x1_t.items()]
-                                ),
-                                use_container_width=True,
-                                hide_index=True,
+                        col_tbl, col_grf = st.columns([1.2, 1], gap="medium")
+                        with col_tbl:
+                            aktif_tesis_satirlari = []
+                            for tur_etiket, deg_kod, tesis_dict in [
+                                ("Toplama Merkezi", "x1", x1_t),
+                                ("İşleme Merkezi", "x2", x2_t),
+                                ("İkinci Ömür Merkezi", "x3", x3_t),
+                                ("Geri Dönüşüm Merkezi", "x4", x4_t),
+                            ]:
+                                for il_k, val_v in tesis_dict.items():
+                                    if int(round(val_v or 0)) == 1:
+                                        aktif_tesis_satirlari.append({
+                                            "Tesis Türü": tur_etiket,
+                                            "Değişken": deg_kod,
+                                            "İl": il_adini_normalize_et(il_k),
+                                            "Değer": 1,
+                                        })
+                            _tablo_veya_bilgi(
+                                aktif_tesis_satirlari,
+                                f"Dönem {t_no} için aktif tesis (x1..x4 > 0) bulunmamaktadır.",
                             )
-                        with cx2:
-                            st.markdown("**İşleme (x2)**")
-                            st.dataframe(
-                                pd.DataFrame(
-                                    [{"İl": il_adini_normalize_et(k), "Durum": "Açık (1)" if int(round(v)) == 1 else "Kapalı (0)"} for k, v in x2_t.items()]
-                                ),
-                                use_container_width=True,
-                                hide_index=True,
-                            )
-                        with cx3:
-                            st.markdown("**İkinci Ömür (x3)**")
-                            st.dataframe(
-                                pd.DataFrame(
-                                    [{"İl": il_adini_normalize_et(k), "Durum": "Açık (1)" if int(round(v)) == 1 else "Kapalı (0)"} for k, v in x3_t.items()]
-                                ),
-                                use_container_width=True,
-                                hide_index=True,
-                            )
-                        with cx4:
-                            st.markdown("**Geri Dönüşüm (x4)**")
-                            st.dataframe(
-                                pd.DataFrame(
-                                    [{"İl": il_adini_normalize_et(k), "Durum": "Açık (1)" if int(round(v)) == 1 else "Kapalı (0)"} for k, v in x4_t.items()]
-                                ),
-                                use_container_width=True,
-                                hide_index=True,
-                            )
+                        with col_grf:
+                            _grafik_aktif_tesisler(x1_t, x2_t, x3_t, x4_t, t_no)
 
                     with dt2:
-                        _tablo_veya_bilgi(dv.get("Z"), f"Dönem {t_no} için toplama (Z) kaydı bulunmamaktadır.")
+                        col_tbl, col_grf = st.columns([1.2, 1], gap="medium")
+                        with col_tbl:
+                            _tablo_veya_bilgi(dv.get("Z"), f"Dönem {t_no} için toplama (Z) kaydı bulunmamaktadır.")
+                        with col_grf:
+                            _grafik_toplama_z(dv.get("Z"), t_no)
 
                     with dt3:
-                        st.markdown("**W1 — Toplama → İşleme Akışları**")
-                        _tablo_veya_bilgi(dv.get("W1"), f"Dönem {t_no} için W1 akışı bulunmamaktadır.")
-                        st.markdown("**W2 — İşleme → İkinci Ömür Akışları**")
-                        _tablo_veya_bilgi(dv.get("W2"), f"Dönem {t_no} için W2 akışı bulunmamaktadır.")
-                        st.markdown("**W3 — İşleme → Geri Dönüşüm Akışları**")
-                        _tablo_veya_bilgi(dv.get("W3"), f"Dönem {t_no} için W3 akışı bulunmamaktadır.")
-                        st.markdown("**W4 — Bertaraf Akışları**")
-                        _tablo_veya_bilgi(dv.get("W4"), f"Dönem {t_no} için W4 bertaraf kaydı bulunmamaktadır.")
+                        col_tbl, col_grf = st.columns([1.2, 1], gap="medium")
+                        with col_tbl:
+                            st.markdown("**W1 — Toplama → İşleme Akışları**")
+                            _tablo_veya_bilgi(dv.get("W1"), f"Dönem {t_no} için W1 akışı bulunmamaktadır.")
+                            st.markdown("**W2 — İşleme → İkinci Ömür Akışları**")
+                            _tablo_veya_bilgi(dv.get("W2"), f"Dönem {t_no} için W2 akışı bulunmamaktadır.")
+                            st.markdown("**W3 — İşleme → Geri Dönüşüm Akışları**")
+                            _tablo_veya_bilgi(dv.get("W3"), f"Dönem {t_no} için W3 akışı bulunmamaktadır.")
+                            st.markdown("**W4 — Bertaraf Akışları**")
+                            _tablo_veya_bilgi(dv.get("W4"), f"Dönem {t_no} için W4 bertaraf kaydı bulunmamaktadır.")
+                        with col_grf:
+                            _grafik_akislar_w(dv.get("W1"), dv.get("W2"), dv.get("W3"), dv.get("W4"), t_no)
 
                     with dt4:
-                        _tablo_veya_bilgi(dv.get("V"), f"Dönem {t_no} için ikinci ömür pazar satışı (V) bulunmamaktadır.")
+                        col_tbl, col_grf = st.columns([1.2, 1], gap="medium")
+                        with col_tbl:
+                            _tablo_veya_bilgi(dv.get("V"), f"Dönem {t_no} için ikinci ömür pazar satışı (V) bulunmamaktadır.")
+                        with col_grf:
+                            _grafik_pazar_satislari_v(dv.get("V"), t_no)
 
                     with dt5:
-                        col_i1, col_i2 = st.columns(2)
-                        with col_i1:
+                        col_tbl, col_grf = st.columns([1.2, 1], gap="medium")
+                        with col_tbl:
                             st.markdown("**I1 — Toplama Merkezi Stokları**")
                             _tablo_veya_bilgi(dv.get("I1"), f"Dönem {t_no} için I1 stoku bulunmamaktadır.")
-                            st.markdown("**I3 — İşleme Merkezi Hücre Stokları**")
-                            _tablo_veya_bilgi(dv.get("I3"), f"Dönem {t_no} için I3 stoku bulunmamaktadır.")
-                        with col_i2:
                             st.markdown("**I2 — İşleme Merkezi Batarya Stokları**")
                             _tablo_veya_bilgi(dv.get("I2"), f"Dönem {t_no} için I2 stoku bulunmamaktadır.")
+                            st.markdown("**I3 — İşleme Merkezi Hücre Stokları**")
+                            _tablo_veya_bilgi(dv.get("I3"), f"Dönem {t_no} için I3 stoku bulunmamaktadır.")
                             st.markdown("**I4 — İkinci Ömür Merkezi Stokları**")
                             _tablo_veya_bilgi(dv.get("I4"), f"Dönem {t_no} için I4 stoku bulunmamaktadır.")
+                        with col_grf:
+                            _grafik_stoklar_i(dv.get("I1"), dv.get("I2"), dv.get("I3"), dv.get("I4"), t_no)
 
                     with dt6:
-                        _tablo_veya_bilgi(dv.get("delta"), f"Dönem {t_no} için hammadde üretimi (δ) kaydı bulunmamaktadır.")
+                        col_tbl, col_grf = st.columns([1.2, 1], gap="medium")
+                        with col_tbl:
+                            _tablo_veya_bilgi(dv.get("delta"), f"Dönem {t_no} için hammadde üretimi (δ) kaydı bulunmamaktadır.")
+                        with col_grf:
+                            _grafik_hammadde_delta(dv.get("delta"), t_no)
 
-                    st.markdown(f"#### Dönem {t_no} Aktif Tesisler Haritası")
+                    st.markdown(f"#### Dönem {t_no} Aktif Tesisler ve Toplama Akışı Haritası")
                     _render_opt_tesis_haritasi(
                         x1_t,
                         x2_t,
@@ -1852,6 +2145,7 @@ def show_module2():
                         w1_rows=dv.get("W1"),
                         w2_rows=dv.get("W2"),
                         w3_rows=dv.get("W3"),
+                        z_rows=dv.get("Z"),
                         height=420,
                     )
 
