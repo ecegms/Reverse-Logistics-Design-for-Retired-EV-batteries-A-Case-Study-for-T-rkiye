@@ -1298,6 +1298,180 @@ def solve_milp_model(params):
     """
     return milp_5_donem_coz(params)
 
+def _render_opt_tesis_haritasi(
+    x1_dict,
+    x2_dict,
+    x3_dict,
+    x4_dict,
+    map_key,
+    w1_rows=None,
+    w2_rows=None,
+    w3_rows=None,
+    height=440,
+):
+    renk_toplama = "#2B6CB0"
+    renk_isleme = "#DC2626"
+    renk_iom = "#F97316"
+    renk_gdm = "#16A34A"
+
+    harita_noktalari = []
+    tesis_gruplari = [
+        ("Toplama Merkezi", x1_dict or {}, renk_toplama),
+        ("İşleme Merkezi", x2_dict or {}, renk_isleme),
+        ("İkinci Ömür Merkezi", x3_dict or {}, renk_iom),
+        ("Geri Dönüşüm Merkezi", x4_dict or {}, renk_gdm),
+    ]
+
+    for tur_adi, tesis_sozluk, renk in tesis_gruplari:
+        for il_ham, acik in tesis_sozluk.items():
+            if int(round(acik or 0)) != 1:
+                continue
+            il_adi = il_adini_normalize_et(il_ham)
+            if il_adi not in IL_KOORDINATLARI:
+                continue
+            lat, lon = float(IL_KOORDINATLARI[il_adi][0]), float(IL_KOORDINATLARI[il_adi][1])
+            popup_html = (
+                f"<b>{tur_adi}</b><br>"
+                f"<b>Konum:</b> {il_adi}<br>"
+                f"<b>Enlem:</b> {lat:.6f}<br>"
+                f"<b>Boylam:</b> {lon:.6f}"
+            )
+            harita_noktalari.append({
+                "lat": lat,
+                "lon": lon,
+                "renk": renk,
+                "tooltip": f"{tur_adi}: {il_adi}",
+                "popup": popup_html,
+            })
+
+    st.markdown(
+        f"""
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 8px 14px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; font-size: 13.5px; color: #1E293B;">
+            <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_toplama}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Mavi:</b> Toplama</span>
+            <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_isleme}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Kırmızı:</b> İşleme</span>
+            <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_iom}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Turuncu:</b> İkinci Ömür</span>
+            <span><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:{renk_gdm}; border:1.5px solid #FFFFFF; box-shadow:0 0 0 1px rgba(15,23,42,0.2); margin-right:6px; vertical-align:middle;"></span><b>Yeşil:</b> Geri Dönüşüm</span>
+            <span style="color:#475569;">| <span style="display:inline-block; width:18px; border-top:2.5px solid #DC2626; vertical-align:middle; margin-right:4px;"></span>Toplama → İşleme</span>
+            <span style="color:#475569;"><span style="display:inline-block; width:18px; border-top:2.5px dashed #111827; vertical-align:middle; margin-right:4px;"></span>İşleme → İÖM / GDM</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not harita_noktalari:
+        st.info("Bu dönem için haritada gösterilecek aktif tesis bulunmamaktadır.")
+        return
+
+    m_opt = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
+
+    # Akış çizgileri (README.md: Toplama→İşleme düz kırmızı, İşleme→İÖM/GDM kesikli siyah)
+    cizilen_w1 = set()
+    for r in (w1_rows or []):
+        j_il = il_adini_normalize_et(r.get("Toplama Merkezi (j)", ""))
+        k_il = il_adini_normalize_et(r.get("İşleme Merkezi (k)", ""))
+        if j_il and k_il and j_il != k_il and (j_il, k_il) not in cizilen_w1:
+            if j_il in IL_KOORDINATLARI and k_il in IL_KOORDINATLARI:
+                cizilen_w1.add((j_il, k_il))
+                folium.PolyLine(
+                    locations=[IL_KOORDINATLARI[j_il], IL_KOORDINATLARI[k_il]],
+                    color="#DC2626",
+                    weight=2.2,
+                    opacity=0.72,
+                    tooltip=f"Toplama → İşleme: {j_il} → {k_il}",
+                ).add_to(m_opt)
+
+    cizilen_w23 = set()
+    for r in (w2_rows or []):
+        k_il = il_adini_normalize_et(r.get("İşleme Merkezi (k)", ""))
+        l_il = il_adini_normalize_et(r.get("İkinci Ömür Merkezi (l)", ""))
+        if k_il and l_il and k_il != l_il and ("iom", k_il, l_il) not in cizilen_w23:
+            if k_il in IL_KOORDINATLARI and l_il in IL_KOORDINATLARI:
+                cizilen_w23.add(("iom", k_il, l_il))
+                folium.PolyLine(
+                    locations=[IL_KOORDINATLARI[k_il], IL_KOORDINATLARI[l_il]],
+                    color="#111827",
+                    weight=2.2,
+                    opacity=0.78,
+                    dash_array="6, 6",
+                    tooltip=f"İşleme → İkinci Ömür: {k_il} → {l_il}",
+                ).add_to(m_opt)
+
+    for r in (w3_rows or []):
+        k_il = il_adini_normalize_et(r.get("İşleme Merkezi (k)", ""))
+        m_il = il_adini_normalize_et(r.get("Geri Dönüşüm Merkezi (m)", ""))
+        if k_il and m_il and k_il != m_il and ("gdm", k_il, m_il) not in cizilen_w23:
+            if k_il in IL_KOORDINATLARI and m_il in IL_KOORDINATLARI:
+                cizilen_w23.add(("gdm", k_il, m_il))
+                folium.PolyLine(
+                    locations=[IL_KOORDINATLARI[k_il], IL_KOORDINATLARI[m_il]],
+                    color="#111827",
+                    weight=2.2,
+                    opacity=0.78,
+                    dash_array="6, 6",
+                    tooltip=f"İşleme → Geri Dönüşüm: {k_il} → {m_il}",
+                ).add_to(m_opt)
+
+    # Çakışan / çok yakın (< 0.05 derece) açık tesisler için dinamik mikro görsel kaydırma
+    ziyaret = [False] * len(harita_noktalari)
+    offset_yaricap = 0.12
+    yakinlik_esigi = 0.05
+
+    for i in range(len(harita_noktalari)):
+        if ziyaret[i]:
+            continue
+        grup_indeksler = [i]
+        ziyaret[i] = True
+        kuyruk = [i]
+        while kuyruk:
+            mevcut = kuyruk.pop(0)
+            m_lat, m_lon = harita_noktalari[mevcut]["lat"], harita_noktalari[mevcut]["lon"]
+            for j in range(len(harita_noktalari)):
+                if not ziyaret[j]:
+                    d_lat = harita_noktalari[j]["lat"] - m_lat
+                    d_lon = harita_noktalari[j]["lon"] - m_lon
+                    if float(np.hypot(d_lat, d_lon)) < yakinlik_esigi:
+                        ziyaret[j] = True
+                        grup_indeksler.append(j)
+                        kuyruk.append(j)
+
+        n_grup = len(grup_indeksler)
+        for sira, nokta_idx in enumerate(grup_indeksler):
+            nokta = harita_noktalari[nokta_idx]
+            if n_grup == 1:
+                d_lat_off, d_lon_off = 0.0, 0.0
+            elif n_grup == 2:
+                d_lat_off = 0.0
+                d_lon_off = -offset_yaricap if sira == 0 else offset_yaricap
+            else:
+                aci = (np.pi / 2.0) + (2.0 * np.pi * sira / n_grup)
+                d_lat_off = float(offset_yaricap * np.sin(aci))
+                d_lon_off = float(offset_yaricap * np.cos(aci))
+
+            cizim_lat = nokta["lat"] + d_lat_off
+            cizim_lon = nokta["lon"] + d_lon_off
+
+            folium.CircleMarker(
+                location=[cizim_lat, cizim_lon],
+                radius=7.5,
+                color="#FFFFFF",
+                weight=2,
+                fill=True,
+                fill_color=nokta["renk"],
+                fill_opacity=0.9,
+                tooltip=folium.Tooltip(nokta["tooltip"], sticky=True),
+                popup=folium.Popup(nokta["popup"], max_width=290),
+            ).add_to(m_opt)
+
+    st_folium(m_opt, width=900, height=height, key=map_key)
+
+
+def _tablo_veya_bilgi(kayitlar, bos_mesaj="Bu dönem için kayıt bulunmamaktadır."):
+    if kayitlar:
+        st.dataframe(pd.DataFrame(kayitlar), use_container_width=True, hide_index=True)
+    else:
+        st.info(bos_mesaj)
+
+
 def show_module2():
     st.header("Modül 2: MILP Ağ Optimizasyonu ve Senaryo Analizi")
     col_back, col_reset = st.columns([8, 2])
@@ -1354,36 +1528,36 @@ def show_module2():
         c1, c2, c3, c4, c5 = st.columns(5)
         gamma = c1.slider("Geri Toplama Oranı γ (%)", 5, 100, 40, 5)
         binek_payi = c2.slider("Binek Araç Payı (%)", 50, 99, 95, 1)
-        R1 = c3.number_input("Geri Dönüşüm Oranı R1 (%)", 0.0, 100.0, 62.0, 1.0)
-        R2 = c4.number_input("İkinci Ömür Oranı R2 (%)", 0.0, 100.0, 15.0, 1.0)
+        R1 = c3.number_input("Geri Dönüşüm Oranı R1 (%)", min_value=0.0, max_value=100.0, value=62.0, step=1.0)
+        R2 = c4.number_input("İkinci Ömür Oranı R2 (%)", min_value=0.0, max_value=100.0, value=15.0, step=1.0)
         R3 = round(100.0 - (R1 + R2), 2)
         c5.metric("Bertaraf Oranı R3 (%)", f"%{R3}", delta="Otomatik", delta_color="off")
 
     with st.expander("B. Tesis Kapasiteleri ve Sabit İnşa Maliyetleri", expanded=False):
         k1, k2, k3, k4 = st.columns(4)
-        cap_j = k1.number_input("Toplama Kapasitesi", 1000, 500000, 100000, 5000)
-        cap_k = k2.number_input("İşleme Kapasitesi", 1000, 500000, 100000, 5000)
-        cap_l = k3.number_input("İkinci Ömür Kapasitesi (Ton)", 100, 100000, 15000, 500)
-        cap_m = k4.number_input("Geri Dönüşüm Kapasitesi (Ton)", 100, 100000, 30000, 1000)
+        cap_j = k1.number_input("Toplama Kapasitesi", min_value=0, max_value=None, value=100000, step=5000)
+        cap_k = k2.number_input("İşleme Kapasitesi", min_value=0, max_value=None, value=100000, step=5000)
+        cap_l = k3.number_input("İkinci Ömür Kapasitesi (Ton)", min_value=0, max_value=None, value=15000, step=500)
+        cap_m = k4.number_input("Geri Dönüşüm Kapasitesi (Ton)", min_value=0, max_value=None, value=30000, step=1000)
 
         m1, m2, m3, m4 = st.columns(4)
-        fj = m1.number_input("Toplama İnşa ($)", 0, 5000000, 250000, 25000)
-        fk = m2.number_input("İşleme İnşa ($)", 0, 5000000, 400000, 25000)
-        fl = m3.number_input("İkinci Ömür İnşa ($)", 0, 5000000, 650000, 25000)
-        fm = m4.number_input("Geri Dönüşüm İnşa ($)", 0, 5000000, 450000, 25000)
+        fj = m1.number_input("Toplama İnşa ($)", min_value=0, max_value=None, value=250000, step=25000)
+        fk = m2.number_input("İşleme İnşa ($)", min_value=0, max_value=None, value=400000, step=25000)
+        fl = m3.number_input("İkinci Ömür İnşa ($)", min_value=0, max_value=None, value=650000, step=25000)
+        fm = m4.number_input("Geri Dönüşüm İnşa ($)", min_value=0, max_value=None, value=450000, step=25000)
 
     with st.expander("C. Birim Taşıma, İşlem Maliyetleri ve Satış Fiyatları", expanded=False):
         t1, t2, t3, t4, t5 = st.columns(5)
-        c3_tasima = t1.number_input("Batarya Taşıma C3", 0.0, 50.0, 8.0, 0.5)
-        c4_tasima = t2.number_input("Hücre Taşıma C4", 0.0, 5.0, 0.08, 0.01)
-        c1_binek = t3.number_input("İşleme Binek C1", 50.0, 5000.0, 350.0, 50.0)
-        c1_agir = t4.number_input("İşleme Ağır C1", 100.0, 10000.0, 3200.0, 100.0)
-        c5_bertaraf = t5.number_input("Bertaraf C5", 0.0, 100.0, 5.0, 1.0)
+        c3_tasima = t1.number_input("Batarya Taşıma C3", min_value=0.0, max_value=None, value=8.0, step=0.5)
+        c4_tasima = t2.number_input("Hücre Taşıma C4", min_value=0.0, max_value=None, value=0.08, step=0.01)
+        c1_binek = t3.number_input("İşleme Binek C1", min_value=0.0, max_value=None, value=350.0, step=50.0)
+        c1_agir = t4.number_input("İşleme Ağır C1", min_value=0.0, max_value=None, value=3200.0, step=100.0)
+        c5_bertaraf = t5.number_input("Bertaraf C5", min_value=0.0, max_value=None, value=5.0, step=1.0)
 
         g1, g2, g3, g4 = st.columns(4)
-        rev_kobalt = g1.number_input("Kobalt ($/kg)", 1.0, 150.0, 50.0, 5.0)
-        rev_lityum = g2.number_input("Lityum ($/kg)", 0.1, 50.0, 1.5, 0.2)
-        rev_nikel = g3.number_input("Nikel ($/kg)", 1.0, 50.0, 12.0, 1.0)
+        rev_kobalt = g1.number_input("Kobalt ($/kg)", min_value=0.0, max_value=None, value=50.0, step=5.0)
+        rev_lityum = g2.number_input("Lityum ($/kg)", min_value=0.0, max_value=None, value=1.5, step=0.2)
+        rev_nikel = g3.number_input("Nikel ($/kg)", min_value=0.0, max_value=None, value=12.0, step=1.0)
         hucre_bazli_cc = g4.checkbox("Hücre Bazlı Toplama Maliyeti", value=False)
 
     with st.expander("D. Aday Tesis Lokasyon Kümeleri (J, K, L, M)", expanded=False):
@@ -1413,15 +1587,20 @@ def show_module2():
                     sonuc = solve_milp_model(params)
                     st.session_state.milp_sonuc = sonuc
 
-                    if sonuc['durum'] == 'Optimal':
+                    if sonuc.get('durum') == 'Optimal':
+                        net_kar_val = float(sonuc.get('toplam_net_kar', sonuc.get('amac_degeri', 0.0)))
+                        gelir_val = float(sonuc.get('toplam_gelir', 0.0))
+                        maliyet_val = float(sonuc.get('toplam_maliyet', 0.0))
                         st.session_state.senaryo_gecmisi.append({
                             "Senaryo": senaryo_adi,
                             "Durum": sonuc['durum'],
-                            "Net Toplam Maliyet ($)": round(sonuc['amac_degeri'], 2),
-                            "Açılan Toplama": sum(sonuc['x_j'].values()),
-                            "Açılan İşleme": sum(sonuc['x_k'].values()),
-                            "Açılan İkinci Ömür": sum(sonuc['x_l'].values()),
-                            "Açılan Geri Dönüşüm": sum(sonuc['x_m'].values())
+                            "Toplam Gelir ($)": round(gelir_val, 2),
+                            "Toplam Maliyet ($)": round(maliyet_val, 2),
+                            "Toplam Net Kâr ($)": round(net_kar_val, 2),
+                            "Açılan Toplama": sum(sonuc.get('x_j', {}).values()),
+                            "Açılan İşleme": sum(sonuc.get('x_k', {}).values()),
+                            "Açılan İkinci Ömür": sum(sonuc.get('x_l', {}).values()),
+                            "Açılan Geri Dönüşüm": sum(sonuc.get('x_m', {}).values()),
                         })
                 except Exception as e:
                     st.error(f"Optimizasyon modeli çalıştırılırken beklenmedik bir hata oluştu: {e}")
@@ -1429,73 +1608,248 @@ def show_module2():
     if 'milp_sonuc' in st.session_state and st.session_state.milp_sonuc is not None:
         res = st.session_state.milp_sonuc
         st.divider()
-        if res['durum'] != 'Optimal':
-            st.error(f"Model uygun çözüm bulamadı! Durum: **{res['durum']}**.")
+        if res.get('durum') != 'Optimal':
+            st.error(f"Model uygun çözüm bulamadı! Durum: **{res.get('durum', 'Bilinmiyor')}**.")
         else:
-            st.subheader("2. Optimizasyon Sonuçları ve Maliyet Dağılımı")
-            k1, k2, k3, k4, k5 = st.columns(5)
-            k1.metric("Çözüm Durumu", res['durum'])
-            k2.metric("Net Toplam Maliyet", f"${res['amac_degeri']:,.0f}")
-            k3.metric("Açılan Toplama", f"{sum(res['x_j'].values())}")
-            k4.metric("Açılan İşleme", f"{sum(res['x_k'].values())}")
-            k5.metric("Açılan İÖM & GDM", f"{sum(res['x_l'].values())} & {sum(res['x_m'].values())}")
+            st.subheader("2. Optimizasyon Sonuçları (5 Dönemli Ağ Tasarımı)")
+            donemler_sozluk = res.get('donemler', {})
 
-            col_g, col_t = st.columns([1.4, 1])
-            with col_g:
-                fig_cost, ax_cost = plt.subplots(figsize=(7, 3.8))
-                kalemler = list(res['maliyet_kalemleri'].keys())
-                degerler = list(res['maliyet_kalemleri'].values())
-                renkler = ['#2F70AF' if v >= 0 else '#2E8B57' for v in degerler]
-                ax_cost.barh(kalemler, degerler, color=renkler)
-                ax_cost.axvline(0, color='black', linewidth=0.8)
-                ax_cost.set_title("Amaç Fonksiyonu Bileşenleri ($)")
-                ax_cost.grid(axis='x', linestyle='--', alpha=0.5)
-                st.pyplot(fig_cost)
-            with col_t:
-                df_cost = pd.DataFrame({
-                    "Kalem": list(res['maliyet_kalemleri'].keys()),
-                    "Tutar": [f"${v:,.2f}" for v in res['maliyet_kalemleri'].values()]
-                })
-                st.dataframe(df_cost, use_container_width=True, hide_index=True)
-
-            st.subheader("3. Karar Değişkenleri Detaylı Sonuçları")
-            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-                "1️⃣ Tesis Açma (x)", "2️⃣ İl Atamaları (z)", "3️⃣ İşleme Yükü (β)",
-                "4️⃣ Geri Dönüşüm (θ)", "5️⃣ İkinci Ömür & Bertaraf", "6️⃣ Harita & Senaryo"
+            ana_sekmeler = st.tabs([
+                "📊 5 Dönem Karşılaştırma",
+                "Dönem 1",
+                "Dönem 2",
+                "Dönem 3",
+                "Dönem 4",
+                "Dönem 5",
             ])
 
-            with tab1:
-                c_j, c_k, c_l, c_m = st.columns(4)
-                with c_j: st.dataframe(pd.DataFrame(list(res['x_j'].items()), columns=["Merkez", "x_j"]), use_container_width=True, hide_index=True)
-                with c_k: st.dataframe(pd.DataFrame(list(res['x_k'].items()), columns=["Merkez", "x_k"]), use_container_width=True, hide_index=True)
-                with c_l: st.dataframe(pd.DataFrame(list(res['x_l'].items()), columns=["Merkez", "x_l"]), use_container_width=True, hide_index=True)
-                with c_m: st.dataframe(pd.DataFrame(list(res['x_m'].items()), columns=["Merkez", "x_m"]), use_container_width=True, hide_index=True)
+            # --------------------------------------------------
+            # SEKME 0: 5 DÖNEM KARŞILAŞTIRMA
+            # --------------------------------------------------
+            with ana_sekmeler[0]:
+                toplam_net_kar = float(res.get('toplam_net_kar', res.get('amac_degeri', 0.0)))
+                toplam_gelir = float(res.get('toplam_gelir', 0.0))
+                toplam_maliyet = float(res.get('toplam_maliyet', 0.0))
 
-            with tab2:
-                if res['z_ijb']: st.dataframe(pd.DataFrame(res['z_ijb']), use_container_width=True, hide_index=True)
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Çözüm Durumu", res.get('durum', 'Optimal'))
+                m2.metric("5 Yıllık Toplam Net Kâr", f"${toplam_net_kar:,.0f}")
+                m3.metric("5 Yıllık Toplam Gelir", f"${toplam_gelir:,.0f}")
+                m4.metric("5 Yıllık Toplam Maliyet", f"${toplam_maliyet:,.0f}")
 
-            with tab3:
-                if res['beta_kb']: st.dataframe(pd.DataFrame(res['beta_kb']), use_container_width=True, hide_index=True)
+                karsilastirma_satirlari = []
+                for t_no in range(1, 6):
+                    dv = donemler_sozluk.get(t_no) or donemler_sozluk.get(str(t_no))
+                    if dv is None:
+                        continue
+                    karsilastirma_satirlari.append({
+                        "Dönem": f"Dönem {t_no}",
+                        "Gelir ($)": float(dv.get("gelir", 0.0)),
+                        "Maliyet ($)": float(dv.get("maliyet", 0.0)),
+                        "Net Kâr ($)": float(dv.get("net_kar", 0.0)),
+                        "Aktif Toplama": sum((dv.get("x1") or {}).values()),
+                        "Aktif İşleme": sum((dv.get("x2") or {}).values()),
+                        "Aktif İkinci Ömür": sum((dv.get("x3") or {}).values()),
+                        "Aktif Geri Dönüşüm": sum((dv.get("x4") or {}).values()),
+                    })
 
-            with tab4:
-                if res['theta_mn']: st.dataframe(pd.DataFrame(res['theta_mn']), use_container_width=True, hide_index=True)
+                if karsilastirma_satirlari:
+                    st.markdown("#### Dönemler Bazında Özet Karşılaştırma")
+                    df_karsilastirma_gosterim = pd.DataFrame([
+                        {
+                            "Dönem": s["Dönem"],
+                            "Gelir ($)": f"${s['Gelir ($)']:,.2f}",
+                            "Maliyet ($)": f"${s['Maliyet ($)']:,.2f}",
+                            "Net Kâr ($)": f"${s['Net Kâr ($)']:,.2f}",
+                            "Aktif Toplama": s["Aktif Toplama"],
+                            "Aktif İşleme": s["Aktif İşleme"],
+                            "Aktif İkinci Ömür": s["Aktif İkinci Ömür"],
+                            "Aktif Geri Dönüşüm": s["Aktif Geri Dönüşüm"],
+                        }
+                        for s in karsilastirma_satirlari
+                    ])
+                    st.dataframe(
+                        df_karsilastirma_gosterim,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(280, 38 + 35 * len(df_karsilastirma_gosterim)),
+                    )
 
-            with tab5:
-                if res['W_klb']: st.dataframe(pd.DataFrame(res['W_klb']), use_container_width=True, hide_index=True)
+                    col_graf, col_kalem = st.columns([1.45, 1], gap="medium")
+                    with col_graf:
+                        donem_etiketler = [s["Dönem"] for s in karsilastirma_satirlari]
+                        gelirler = [s["Gelir ($)"] for s in karsilastirma_satirlari]
+                        maliyetler = [s["Maliyet ($)"] for s in karsilastirma_satirlari]
+                        net_karlar = [s["Net Kâr ($)"] for s in karsilastirma_satirlari]
 
-            with tab6:
-                m_opt = folium.Map(location=[39.0, 35.0], zoom_start=5.5)
-                for j, acik in res['x_j'].items():
-                    if acik == 1: folium.Marker(IL_KOORDINATLARI[j], tooltip=f"Toplama: {j}", icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_opt)
-                for k, acik in res['x_k'].items():
-                    if acik == 1: folium.Marker(IL_KOORDINATLARI[k], tooltip=f"İşleme: {k}", icon=folium.Icon(color="red", icon="cog")).add_to(m_opt)
-                for l, acik in res['x_l'].items():
-                    if acik == 1: folium.Marker(IL_KOORDINATLARI[l], tooltip=f"İkinci Ömür: {l}", icon=folium.Icon(color="orange", icon="flash")).add_to(m_opt)
-                for m, acik in res['x_m'].items():
-                    if acik == 1: folium.Marker(IL_KOORDINATLARI[m], tooltip=f"Geri Dönüşüm: {m}", icon=folium.Icon(color="green", icon="recycle")).add_to(m_opt)
-                st_folium(m_opt, width=900, height=420, key="map_opt_final")
+                        x_pos = np.arange(len(donem_etiketler))
+                        bar_w = 0.26
+
+                        fig_comp, ax_comp = plt.subplots(figsize=(7.2, 3.9), dpi=100)
+                        ax_comp.bar(x_pos - bar_w, gelirler, width=bar_w, label="Gelir", color="#2E8B57")
+                        ax_comp.bar(x_pos, maliyetler, width=bar_w, label="Maliyet", color="#64748B")
+                        ax_comp.bar(x_pos + bar_w, net_karlar, width=bar_w, label="Net Kâr", color="#2B6CB0")
+                        ax_comp.axhline(0, color="#334155", linewidth=0.8)
+                        ax_comp.set_xticks(x_pos)
+                        ax_comp.set_xticklabels(donem_etiketler, fontsize=9, color="#1E293B")
+                        ax_comp.set_ylabel("Tutar ($)", fontsize=9.5, color="#334155")
+                        ax_comp.set_title("5 Dönem Gelir, Maliyet ve Net Kâr Karşılaştırması", fontsize=11, fontweight="bold", pad=10, color="#1E293B")
+                        ax_comp.tick_params(axis="y", labelsize=8.5, colors="#475569")
+                        ax_comp.spines["top"].set_visible(False)
+                        ax_comp.spines["right"].set_visible(False)
+                        ax_comp.grid(axis="y", linestyle="--", alpha=0.45)
+                        ax_comp.legend(frameon=False, fontsize=8.5, loc="upper left")
+                        fig_comp.tight_layout()
+                        st.pyplot(fig_comp, use_container_width=True)
+                        plt.close(fig_comp)
+
+                    with col_kalem:
+                        if res.get('maliyet_kalemleri'):
+                            st.markdown("**5 Yıllık Gelir / Maliyet Kırılımı**")
+                            df_cost = pd.DataFrame({
+                                "Kalem": list(res['maliyet_kalemleri'].keys()),
+                                "Tutar ($)": [f"${v:,.2f}" for v in res['maliyet_kalemleri'].values()],
+                            })
+                            st.dataframe(df_cost, use_container_width=True, hide_index=True, height=340)
+                else:
+                    st.warning("Dönem bazlı karşılaştırma verisi bulunamadı.")
+
+                st.markdown("#### 5 Yıllık Genel Ağ Haritası (Açılan Tüm Tesisler)")
+                _render_opt_tesis_haritasi(
+                    res.get('x_j'),
+                    res.get('x_k'),
+                    res.get('x_l'),
+                    res.get('x_m'),
+                    map_key="map_opt_genel",
+                    w1_rows=res.get('W_jkb'),
+                    w2_rows=res.get('W_klb'),
+                    w3_rows=res.get('W_kmb'),
+                    height=430,
+                )
+
                 if st.session_state.senaryo_gecmisi:
+                    st.markdown("#### Senaryo Karşılaştırma Geçmişi")
                     st.dataframe(pd.DataFrame(st.session_state.senaryo_gecmisi), use_container_width=True, hide_index=True)
+
+            # --------------------------------------------------
+            # SEKMELER 1..5: DÖNEM 1 .. DÖNEM 5
+            # --------------------------------------------------
+            for t_no in range(1, 6):
+                with ana_sekmeler[t_no]:
+                    dv = donemler_sozluk.get(t_no) or donemler_sozluk.get(str(t_no))
+                    if dv is None:
+                        st.warning(f"Dönem {t_no} için optimizasyon çıktısı bulunamadı.")
+                        continue
+
+                    x1_t = dv.get("x1") or {}
+                    x2_t = dv.get("x2") or {}
+                    x3_t = dv.get("x3") or {}
+                    x4_t = dv.get("x4") or {}
+
+                    f1, f2, f3 = st.columns(3)
+                    f1.metric(f"Dönem {t_no} Net Kârı", f"${float(dv.get('net_kar', 0.0)):,.0f}")
+                    f2.metric(f"Dönem {t_no} Geliri", f"${float(dv.get('gelir', 0.0)):,.0f}")
+                    f3.metric(f"Dönem {t_no} Maliyeti", f"${float(dv.get('maliyet', 0.0)):,.0f}")
+
+                    t_c1, t_c2, t_c3, t_c4 = st.columns(4)
+                    t_c1.metric("Aktif Toplama (x1)", f"{sum(x1_t.values())}")
+                    t_c2.metric("Aktif İşleme (x2)", f"{sum(x2_t.values())}")
+                    t_c3.metric("Aktif İkinci Ömür (x3)", f"{sum(x3_t.values())}")
+                    t_c4.metric("Aktif Geri Dönüşüm (x4)", f"{sum(x4_t.values())}")
+
+                    st.markdown(f"#### Dönem {t_no} Karar Değişkenleri")
+                    dt1, dt2, dt3, dt4, dt5, dt6 = st.tabs([
+                        "Aktif Tesisler (x1..x4)",
+                        "Toplama (Z)",
+                        "Tesis Akışları (W1..W4)",
+                        "Pazar Satışları (V)",
+                        "Stoklar (I1..I4)",
+                        "Hammadde Üretimi (δ)",
+                    ])
+
+                    with dt1:
+                        cx1, cx2, cx3, cx4 = st.columns(4)
+                        with cx1:
+                            st.markdown("**Toplama (x1)**")
+                            st.dataframe(
+                                pd.DataFrame(
+                                    [{"İl": il_adini_normalize_et(k), "Durum": "Açık (1)" if int(round(v)) == 1 else "Kapalı (0)"} for k, v in x1_t.items()]
+                                ),
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+                        with cx2:
+                            st.markdown("**İşleme (x2)**")
+                            st.dataframe(
+                                pd.DataFrame(
+                                    [{"İl": il_adini_normalize_et(k), "Durum": "Açık (1)" if int(round(v)) == 1 else "Kapalı (0)"} for k, v in x2_t.items()]
+                                ),
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+                        with cx3:
+                            st.markdown("**İkinci Ömür (x3)**")
+                            st.dataframe(
+                                pd.DataFrame(
+                                    [{"İl": il_adini_normalize_et(k), "Durum": "Açık (1)" if int(round(v)) == 1 else "Kapalı (0)"} for k, v in x3_t.items()]
+                                ),
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+                        with cx4:
+                            st.markdown("**Geri Dönüşüm (x4)**")
+                            st.dataframe(
+                                pd.DataFrame(
+                                    [{"İl": il_adini_normalize_et(k), "Durum": "Açık (1)" if int(round(v)) == 1 else "Kapalı (0)"} for k, v in x4_t.items()]
+                                ),
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+
+                    with dt2:
+                        _tablo_veya_bilgi(dv.get("Z"), f"Dönem {t_no} için toplama (Z) kaydı bulunmamaktadır.")
+
+                    with dt3:
+                        st.markdown("**W1 — Toplama → İşleme Akışları**")
+                        _tablo_veya_bilgi(dv.get("W1"), f"Dönem {t_no} için W1 akışı bulunmamaktadır.")
+                        st.markdown("**W2 — İşleme → İkinci Ömür Akışları**")
+                        _tablo_veya_bilgi(dv.get("W2"), f"Dönem {t_no} için W2 akışı bulunmamaktadır.")
+                        st.markdown("**W3 — İşleme → Geri Dönüşüm Akışları**")
+                        _tablo_veya_bilgi(dv.get("W3"), f"Dönem {t_no} için W3 akışı bulunmamaktadır.")
+                        st.markdown("**W4 — Bertaraf Akışları**")
+                        _tablo_veya_bilgi(dv.get("W4"), f"Dönem {t_no} için W4 bertaraf kaydı bulunmamaktadır.")
+
+                    with dt4:
+                        _tablo_veya_bilgi(dv.get("V"), f"Dönem {t_no} için ikinci ömür pazar satışı (V) bulunmamaktadır.")
+
+                    with dt5:
+                        col_i1, col_i2 = st.columns(2)
+                        with col_i1:
+                            st.markdown("**I1 — Toplama Merkezi Stokları**")
+                            _tablo_veya_bilgi(dv.get("I1"), f"Dönem {t_no} için I1 stoku bulunmamaktadır.")
+                            st.markdown("**I3 — İşleme Merkezi Hücre Stokları**")
+                            _tablo_veya_bilgi(dv.get("I3"), f"Dönem {t_no} için I3 stoku bulunmamaktadır.")
+                        with col_i2:
+                            st.markdown("**I2 — İşleme Merkezi Batarya Stokları**")
+                            _tablo_veya_bilgi(dv.get("I2"), f"Dönem {t_no} için I2 stoku bulunmamaktadır.")
+                            st.markdown("**I4 — İkinci Ömür Merkezi Stokları**")
+                            _tablo_veya_bilgi(dv.get("I4"), f"Dönem {t_no} için I4 stoku bulunmamaktadır.")
+
+                    with dt6:
+                        _tablo_veya_bilgi(dv.get("delta"), f"Dönem {t_no} için hammadde üretimi (δ) kaydı bulunmamaktadır.")
+
+                    st.markdown(f"#### Dönem {t_no} Aktif Tesisler Haritası")
+                    _render_opt_tesis_haritasi(
+                        x1_t,
+                        x2_t,
+                        x3_t,
+                        x4_t,
+                        map_key=f"map_opt_donem_{t_no}",
+                        w1_rows=dv.get("W1"),
+                        w2_rows=dv.get("W2"),
+                        w3_rows=dv.get("W3"),
+                        height=420,
+                    )
 
 # ==========================================
 # ANA KONTROL MEKANİZMASI
