@@ -1346,27 +1346,133 @@ def solve_milp_model(params):
 
     model = pulp.LpProblem("EV_Batarya_Tersine_Lojistik_MILP", pulp.LpMinimize)
 
-    # Python 3.13+ ve PuLP uyumsuzluğunu aşmak için Binary yerine lowBound=0, upBound=1, cat='Integer' kullanımı
-    x_ij = { (i, j): pulp.LpVariable(f"x_ij_{i}_{j}", lowBound=0, upBound=1, cat='Integer') for i in I for j in J }
-    x_j = { j: pulp.LpVariable(f"x_j_{j}", lowBound=0, upBound=1, cat='Integer') for j in J }
-    x_k = { k: pulp.LpVariable(f"x_k_{k}", lowBound=0, upBound=1, cat='Integer') for k in K }
-    x_l = { l: pulp.LpVariable(f"x_l_{l}", lowBound=0, upBound=1, cat='Integer') for l in L }
-    x_m = { m: pulp.LpVariable(f"x_m_{m}", lowBound=0, upBound=1, cat='Integer') for m in M }
+    def _degisken_ekle(name, lowBound=None, upBound=None, cat='Continuous'):
+        if hasattr(model, "add_variable"):
+            return model.add_variable(name, lowBound=lowBound, upBound=upBound, cat=cat)
+        return pulp.LpVariable(name, lowBound=lowBound, upBound=upBound, cat=cat)
 
-    z_ijb = { (i, j, b): pulp.LpVariable(f"z_ijb_{i}_{j}_{b}", lowBound=0) for i in I for j in J for b in B }
-    W_jkb = { (j, k, b): pulp.LpVariable(f"W_jkb_{j}_{k}_{b}", lowBound=0) for j in J for k in K for b in B }
-    beta_kb = { (k, b): pulp.LpVariable(f"beta_kb_{k}_{b}", lowBound=0) for k in K for b in B }
-    W_kmb = { (k, m, b): pulp.LpVariable(f"W_kmb_{k}_{m}_{b}", lowBound=0) for k in K for m in M for b in B }
-    W_klb = { (k, l, b): pulp.LpVariable(f"W_klb_{k}_{l}_{b}", lowBound=0) for k in K for l in L for b in B }
-    W_kb = { (k, b): pulp.LpVariable(f"W_kb_{k}_{b}", lowBound=0) for k in K for b in B }
+    def _cozucu_al():
+        if hasattr(pulp, "PULP_CBC_CMD"):
+            cozucu = pulp.PULP_CBC_CMD(msg=False)
+            if cozucu.available():
+                return cozucu
+        if hasattr(pulp, "COIN_CMD"):
+            try:
+                cozucu = pulp.COIN_CMD(msg=False, gapRel=0.0, gapAbs=0.0)
+            except TypeError:
+                cozucu = pulp.COIN_CMD(msg=False)
+            if cozucu.available():
+                return cozucu
+        if hasattr(pulp, "listSolvers") and hasattr(pulp, "getSolver"):
+            for ad in pulp.listSolvers(onlyAvailable=True):
+                try:
+                    cozucu = pulp.getSolver(ad, msg=False)
+                except Exception:
+                    try:
+                        cozucu = pulp.getSolver(ad)
+                    except Exception:
+                        continue
+                if cozucu is not None and cozucu.available():
+                    return cozucu
+        return None
 
-    Wrep_lb = { (l, b): pulp.LpVariable(f"Wrep_lb_{l}_{b}", lowBound=0) for l in L for b in B }
-    Wrem_lb = { (l, b): pulp.LpVariable(f"Wrem_lb_{l}_{b}", lowBound=0) for l in L for b in B }
-    Wreu_lb = { (l, b): pulp.LpVariable(f"Wreu_lb_{l}_{b}", lowBound=0) for l in L for b in B }
+    def _durum_metni(sonuc):
+        if hasattr(sonuc, "status_str"):
+            durum = str(sonuc.status_str)
+            if durum == "GapLimit" and getattr(sonuc, "has_solution", False):
+                gap_rel = getattr(sonuc, "gap_rel", None)
+                if gap_rel is None or abs(float(gap_rel)) <= 1e-4:
+                    return "Optimal"
+            return durum
+        lp_status = getattr(pulp, "LpStatus", None)
+        if lp_status is not None and sonuc in lp_status:
+            return str(lp_status[sonuc])
+        return str(sonuc)
 
-    theta_lb = { (l, b): pulp.LpVariable(f"theta_lb_{l}_{b}", lowBound=0) for l in L for b in B }
-    theta_mb = { (m, b): pulp.LpVariable(f"theta_mb_{m}_{b}", lowBound=0) for m in M for b in B }
-    theta_mn = { (m, n): pulp.LpVariable(f"theta_mn_{m}_{n}", lowBound=0) for m in M for n in N }
+    def _scipy_ile_coz():
+        from scipy.optimize import Bounds, LinearConstraint, milp
+        from scipy.sparse import csc_matrix
+
+        degiskenler = list(model.variables())
+        n_vars = len(degiskenler)
+        var_idx = {v.name: idx for idx, v in enumerate(degiskenler)}
+
+        c_vec = np.zeros(n_vars, dtype=float)
+        if model.objective is not None:
+            for var, katsayi in model.objective.items():
+                c_vec[var_idx[var.name]] = float(katsayi)
+
+        lb_v = np.array(
+            [-np.inf if v.lowBound is None else float(v.lowBound) for v in degiskenler],
+            dtype=float,
+        )
+        ub_v = np.array(
+            [np.inf if v.upBound is None else float(v.upBound) for v in degiskenler],
+            dtype=float,
+        )
+        integrality = np.array(
+            [1 if str(v.cat) in ("Integer", "Binary") else 0 for v in degiskenler],
+            dtype=int,
+        )
+
+        kisitlar = model.constraints() if callable(model.constraints) else list(model.constraints.values())
+        n_cons = len(kisitlar)
+        rows, cols, vals = [], [], []
+        lb_c = np.full(n_cons, -np.inf, dtype=float)
+        ub_c = np.full(n_cons, np.inf, dtype=float)
+
+        for r, con in enumerate(kisitlar):
+            rhs = -float(con.constant or 0.0)
+            if con.sense == -1:
+                ub_c[r] = rhs
+            elif con.sense == 0:
+                lb_c[r] = rhs
+                ub_c[r] = rhs
+            elif con.sense == 1:
+                lb_c[r] = rhs
+            for var, katsayi in con.items():
+                rows.append(r)
+                cols.append(var_idx[var.name])
+                vals.append(float(katsayi))
+
+        A_mat = csc_matrix((vals, (rows, cols)), shape=(n_cons, n_vars))
+        res_scipy = milp(
+            c=c_vec,
+            integrality=integrality,
+            bounds=Bounds(lb_v, ub_v),
+            constraints=LinearConstraint(A_mat, lb_c, ub_c),
+        )
+        if res_scipy.success and res_scipy.x is not None:
+            for idx, v in enumerate(degiskenler):
+                v.varValue = float(res_scipy.x[idx])
+            return "Optimal"
+        if res_scipy.status == 2:
+            return "Infeasible"
+        if res_scipy.status == 3:
+            return "Unbounded"
+        return "Not Solved"
+
+    # PuLP 2.x/3.x ve 4.x uyumlu değişken tanımlamaları
+    x_ij = { (i, j): _degisken_ekle(f"x_ij_{i}_{j}", lowBound=0, upBound=1, cat='Integer') for i in I for j in J }
+    x_j = { j: _degisken_ekle(f"x_j_{j}", lowBound=0, upBound=1, cat='Integer') for j in J }
+    x_k = { k: _degisken_ekle(f"x_k_{k}", lowBound=0, upBound=1, cat='Integer') for k in K }
+    x_l = { l: _degisken_ekle(f"x_l_{l}", lowBound=0, upBound=1, cat='Integer') for l in L }
+    x_m = { m: _degisken_ekle(f"x_m_{m}", lowBound=0, upBound=1, cat='Integer') for m in M }
+
+    z_ijb = { (i, j, b): _degisken_ekle(f"z_ijb_{i}_{j}_{b}", lowBound=0) for i in I for j in J for b in B }
+    W_jkb = { (j, k, b): _degisken_ekle(f"W_jkb_{j}_{k}_{b}", lowBound=0) for j in J for k in K for b in B }
+    beta_kb = { (k, b): _degisken_ekle(f"beta_kb_{k}_{b}", lowBound=0) for k in K for b in B }
+    W_kmb = { (k, m, b): _degisken_ekle(f"W_kmb_{k}_{m}_{b}", lowBound=0) for k in K for m in M for b in B }
+    W_klb = { (k, l, b): _degisken_ekle(f"W_klb_{k}_{l}_{b}", lowBound=0) for k in K for l in L for b in B }
+    W_kb = { (k, b): _degisken_ekle(f"W_kb_{k}_{b}", lowBound=0) for k in K for b in B }
+
+    Wrep_lb = { (l, b): _degisken_ekle(f"Wrep_lb_{l}_{b}", lowBound=0) for l in L for b in B }
+    Wrem_lb = { (l, b): _degisken_ekle(f"Wrem_lb_{l}_{b}", lowBound=0) for l in L for b in B }
+    Wreu_lb = { (l, b): _degisken_ekle(f"Wreu_lb_{l}_{b}", lowBound=0) for l in L for b in B }
+
+    theta_lb = { (l, b): _degisken_ekle(f"theta_lb_{l}_{b}", lowBound=0) for l in L for b in B }
+    theta_mb = { (m, b): _degisken_ekle(f"theta_mb_{m}_{b}", lowBound=0) for m in M for b in B }
+    theta_mn = { (m, n): _degisken_ekle(f"theta_mn_{m}_{n}", lowBound=0) for m in M for n in N }
 
     # Amaç Fonksiyonu Bileşenleri
     maliyet_toplama = pulp.lpSum([z_ijb[(i, j, b)] * CC[b] + z_ijb[(i, j, b)] * d_ij[(i, j)] * C3 for i in I for j in J for b in B])
@@ -1421,46 +1527,55 @@ def solve_milp_model(params):
             model += pulp.lpSum([W_klb[(k, l, b)] * C[b] for k in K]) == theta_lb[(l, b)], f"Agirlik_l_{l}_{b}"
         model += pulp.lpSum([theta_lb[(l, b)] for b in B]) <= Cap_l * x_l[l], f"Cap_l_{l}"
 
-    status = model.solve(pulp.PULP_CBC_CMD(msg=False))
+    cozucu = _cozucu_al()
+    if cozucu is not None:
+        status = model.solve(cozucu)
+        durum_metni = _durum_metni(status)
+    else:
+        durum_metni = _scipy_ile_coz()
+
+    def _guvenli_deger(ifade):
+        val = pulp.value(ifade)
+        return float(val) if val is not None else 0.0
 
     return {
-        "durum": pulp.LpStatus[status],
-        "amac_degeri": pulp.value(model.objective),
+        "durum": durum_metni,
+        "amac_degeri": _guvenli_deger(model.objective),
         "maliyet_kalemleri": {
-            "Toplama Merkezi (Taşıma + İşlem)": pulp.value(maliyet_toplama),
-            "İşleme Merkezi (Taşıma + İşlem)": pulp.value(maliyet_isleme),
-            "İkinci Ömür (Taşıma + İşlem)": pulp.value(maliyet_ikinci_omur),
-            "Geri Dönüşüm (Taşıma + İşlem)": pulp.value(maliyet_geri_donusum),
-            "Bertaraf Maliyeti": pulp.value(maliyet_bertaraf),
-            "Sabit Tesis İnşa Maliyeti": pulp.value(maliyet_insa),
-            "Materyal Satış Geliri (-)": -pulp.value(gelir_geri_donusum)
+            "Toplama Merkezi (Taşıma + İşlem)": _guvenli_deger(maliyet_toplama),
+            "İşleme Merkezi (Taşıma + İşlem)": _guvenli_deger(maliyet_isleme),
+            "İkinci Ömür (Taşıma + İşlem)": _guvenli_deger(maliyet_ikinci_omur),
+            "Geri Dönüşüm (Taşıma + İşlem)": _guvenli_deger(maliyet_geri_donusum),
+            "Bertaraf Maliyeti": _guvenli_deger(maliyet_bertaraf),
+            "Sabit Tesis İnşa Maliyeti": _guvenli_deger(maliyet_insa),
+            "Materyal Satış Geliri (-)": -_guvenli_deger(gelir_geri_donusum)
         },
         "x_j": {j: int(round(pulp.value(x_j[j]) or 0)) for j in J},
         "x_k": {k: int(round(pulp.value(x_k[k]) or 0)) for k in K},
         "x_l": {l: int(round(pulp.value(x_l[l]) or 0)) for l in L},
         "x_m": {m: int(round(pulp.value(x_m[m]) or 0)) for m in M},
         "x_ij": [(i, j) for i in I for j in J if (pulp.value(x_ij[(i, j)]) or 0) > 0.5],
-        "z_ijb": [{"İl (i)": i, "Toplama Merkezi (j)": j, "Batarya Tipi (b)": b, "Miktar (Adet)": round(pulp.value(z_ijb[(i, j, b)]), 2)}
-                  for i in I for j in J for b in B if (pulp.value(z_ijb[(i, j, b)]) or 0) > 0.01],
-        "W_jkb": [{"Toplama Merkezi (j)": j, "İşleme Merkezi (k)": k, "Batarya Tipi (b)": b, "Miktar (Adet)": round(pulp.value(W_jkb[(j, k, b)]), 2)}
-                  for j in J for k in K for b in B if (pulp.value(W_jkb[(j, k, b)]) or 0) > 0.01],
-        "beta_kb": [{"İşleme Merkezi (k)": k, "Batarya Tipi (b)": b, "Toplam Batarya (Adet)": round(pulp.value(beta_kb[(k, b)]), 2)}
-                    for k in K for b in B if (pulp.value(beta_kb[(k, b)]) or 0) > 0.01],
-        "W_kmb": [{"İşleme Merkezi (k)": k, "Geri Dönüşüm Merkezi (m)": m, "Batarya Tipi (b)": b, "Hücre Sayısı": round(pulp.value(W_kmb[(k, m, b)]), 2)}
-                  for k in K for m in M for b in B if (pulp.value(W_kmb[(k, m, b)]) or 0) > 0.01],
+        "z_ijb": [{"İl (i)": i, "Toplama Merkezi (j)": j, "Batarya Tipi (b)": b, "Miktar (Adet)": round(_guvenli_deger(z_ijb[(i, j, b)]), 2)}
+                  for i in I for j in J for b in B if _guvenli_deger(z_ijb[(i, j, b)]) > 0.01],
+        "W_jkb": [{"Toplama Merkezi (j)": j, "İşleme Merkezi (k)": k, "Batarya Tipi (b)": b, "Miktar (Adet)": round(_guvenli_deger(W_jkb[(j, k, b)]), 2)}
+                  for j in J for k in K for b in B if _guvenli_deger(W_jkb[(j, k, b)]) > 0.01],
+        "beta_kb": [{"İşleme Merkezi (k)": k, "Batarya Tipi (b)": b, "Toplam Batarya (Adet)": round(_guvenli_deger(beta_kb[(k, b)]), 2)}
+                    for k in K for b in B if _guvenli_deger(beta_kb[(k, b)]) > 0.01],
+        "W_kmb": [{"İşleme Merkezi (k)": k, "Geri Dönüşüm Merkezi (m)": m, "Batarya Tipi (b)": b, "Hücre Sayısı": round(_guvenli_deger(W_kmb[(k, m, b)]), 2)}
+                  for k in K for m in M for b in B if _guvenli_deger(W_kmb[(k, m, b)]) > 0.01],
         "W_klb": [{"İşleme Merkezi (k)": k, "İkinci Ömür Merkezi (l)": l, "Batarya Tipi (b)": b,
-                   "Toplam Hücre": round(pulp.value(W_klb[(k, l, b)]), 2),
-                   "Wrep (Farklı Amaç)": round(pulp.value(Wrep_lb[(l, b)]), 2),
-                   "Wrem (Yeniden İmalat)": round(pulp.value(Wrem_lb[(l, b)]), 2),
-                   "Wreu (Doğrudan Kullanım)": round(pulp.value(Wreu_lb[(l, b)]), 2)}
-                  for k in K for l in L for b in B if (pulp.value(W_klb[(k, l, b)]) or 0) > 0.01],
-        "W_kb": [{"İşleme Merkezi (k)": k, "Batarya Tipi (b)": b, "Bertarafa Giden Hücre": round(pulp.value(W_kb[(k, b)]), 2)}
-                 for k in K for b in B if (pulp.value(W_kb[(k, b)]) or 0) > 0.01],
-        "theta_mb": [{"Geri Dönüşüm Merkezi (m)": m, "Batarya Tipi (b)": b, "Hücre Ağırlığı (kg)": round(pulp.value(theta_mb[(m, b)]), 2)}
-                     for m in M for b in B if (pulp.value(theta_mb[(m, b)]) or 0) > 0.01],
-        "theta_mn": [{"Geri Dönüşüm Merkezi (m)": m, "Materyal (n)": n, "Geri Kazanılan Miktar (kg)": round(pulp.value(theta_mn[(m, n)]), 2),
-                      "Satış Geliri ($)": round(pulp.value(theta_mn[(m, n)]) * REV[n], 2)}
-                     for m in M for n in N if (pulp.value(theta_mn[(m, n)]) or 0) > 0.01]
+                   "Toplam Hücre": round(_guvenli_deger(W_klb[(k, l, b)]), 2),
+                   "Wrep (Farklı Amaç)": round(_guvenli_deger(Wrep_lb[(l, b)]), 2),
+                   "Wrem (Yeniden İmalat)": round(_guvenli_deger(Wrem_lb[(l, b)]), 2),
+                   "Wreu (Doğrudan Kullanım)": round(_guvenli_deger(Wreu_lb[(l, b)]), 2)}
+                  for k in K for l in L for b in B if _guvenli_deger(W_klb[(k, l, b)]) > 0.01],
+        "W_kb": [{"İşleme Merkezi (k)": k, "Batarya Tipi (b)": b, "Bertarafa Giden Hücre": round(_guvenli_deger(W_kb[(k, b)]), 2)}
+                 for k in K for b in B if _guvenli_deger(W_kb[(k, b)]) > 0.01],
+        "theta_mb": [{"Geri Dönüşüm Merkezi (m)": m, "Batarya Tipi (b)": b, "Hücre Ağırlığı (kg)": round(_guvenli_deger(theta_mb[(m, b)]), 2)}
+                     for m in M for b in B if _guvenli_deger(theta_mb[(m, b)]) > 0.01],
+        "theta_mn": [{"Geri Dönüşüm Merkezi (m)": m, "Materyal (n)": n, "Geri Kazanılan Miktar (kg)": round(_guvenli_deger(theta_mn[(m, n)]), 2),
+                      "Satış Geliri ($)": round(_guvenli_deger(theta_mn[(m, n)]) * REV[n], 2)}
+                     for m in M for n in N if _guvenli_deger(theta_mn[(m, n)]) > 0.01]
     }
 
 def show_module2():
@@ -1562,33 +1677,36 @@ def show_module2():
         if R3 < 0 or not (aday_J and aday_K and aday_L and aday_M):
             st.error("Lütfen R1+R2 <= 100 olduğundan ve her tesis için en az 1 il seçildiğinden emin olun.")
         else:
-            with st.spinner("MILP modeli CBC çözücüsü ile çözülüyor..."):
-                params = {
-                    'ev_data': ev_data, 'gamma': gamma, 'binek_payi': binek_payi,
-                    'R1': R1, 'R2': R2, 'R3': R3,
-                    'cap_j': cap_j, 'cap_k': cap_k, 'cap_l': cap_l, 'cap_m': cap_m,
-                    'fj': fj, 'fk': fk, 'fl': fl, 'fm': fm,
-                    'c3_tasima': c3_tasima, 'c4_tasima': c4_tasima,
-                    'c1_binek': c1_binek, 'c1_agir': c1_agir, 'c5_bertaraf': c5_bertaraf,
-                    'rev_kobalt': rev_kobalt, 'rev_lityum': rev_lityum, 'rev_nikel': rev_nikel,
-                    'hucre_bazli_cc': hucre_bazli_cc,
-                    'aday_J': aday_J, 'aday_K': aday_K, 'aday_L': aday_L, 'aday_M': aday_M
-                }
-                sonuc = solve_milp_model(params)
-                st.session_state.milp_sonuc = sonuc
+            with st.spinner("MILP modeli çözülüyor..."):
+                try:
+                    params = {
+                        'ev_data': ev_data, 'gamma': gamma, 'binek_payi': binek_payi,
+                        'R1': R1, 'R2': R2, 'R3': R3,
+                        'cap_j': cap_j, 'cap_k': cap_k, 'cap_l': cap_l, 'cap_m': cap_m,
+                        'fj': fj, 'fk': fk, 'fl': fl, 'fm': fm,
+                        'c3_tasima': c3_tasima, 'c4_tasima': c4_tasima,
+                        'c1_binek': c1_binek, 'c1_agir': c1_agir, 'c5_bertaraf': c5_bertaraf,
+                        'rev_kobalt': rev_kobalt, 'rev_lityum': rev_lityum, 'rev_nikel': rev_nikel,
+                        'hucre_bazli_cc': hucre_bazli_cc,
+                        'aday_J': aday_J, 'aday_K': aday_K, 'aday_L': aday_L, 'aday_M': aday_M
+                    }
+                    sonuc = solve_milp_model(params)
+                    st.session_state.milp_sonuc = sonuc
 
-                if sonuc['durum'] == 'Optimal':
-                    st.session_state.senaryo_gecmisi.append({
-                        "Senaryo": senaryo_adi,
-                        "Durum": sonuc['durum'],
-                        "Net Toplam Maliyet ($)": round(sonuc['amac_degeri'], 2),
-                        "Açılan Toplama": sum(sonuc['x_j'].values()),
-                        "Açılan İşleme": sum(sonuc['x_k'].values()),
-                        "Açılan İkinci Ömür": sum(sonuc['x_l'].values()),
-                        "Açılan Geri Dönüşüm": sum(sonuc['x_m'].values())
-                    })
+                    if sonuc['durum'] == 'Optimal':
+                        st.session_state.senaryo_gecmisi.append({
+                            "Senaryo": senaryo_adi,
+                            "Durum": sonuc['durum'],
+                            "Net Toplam Maliyet ($)": round(sonuc['amac_degeri'], 2),
+                            "Açılan Toplama": sum(sonuc['x_j'].values()),
+                            "Açılan İşleme": sum(sonuc['x_k'].values()),
+                            "Açılan İkinci Ömür": sum(sonuc['x_l'].values()),
+                            "Açılan Geri Dönüşüm": sum(sonuc['x_m'].values())
+                        })
+                except Exception as e:
+                    st.error(f"Optimizasyon modeli çalıştırılırken beklenmedik bir hata oluştu: {e}")
 
-    if 'milp_sonuc' in st.session_state:
+    if 'milp_sonuc' in st.session_state and st.session_state.milp_sonuc is not None:
         res = st.session_state.milp_sonuc
         st.divider()
         if res['durum'] != 'Optimal':
