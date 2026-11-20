@@ -12,6 +12,10 @@ import folium
 from streamlit_folium import st_folium
 import matplotlib.pyplot as plt
 import pulp
+import importlib
+import veri_hesaplama as _veri_hesaplama
+if not hasattr(_veri_hesaplama, "milp_5_donem_coz"):
+    _veri_hesaplama = importlib.reload(_veri_hesaplama)
 from veri_hesaplama import (
     IL_KOORDINATLARI,
     dinamik_kmeans_ve_dirsek,
